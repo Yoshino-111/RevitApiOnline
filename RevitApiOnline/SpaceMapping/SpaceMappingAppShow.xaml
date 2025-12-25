@@ -1,0 +1,138 @@
+﻿<Window x:Class="RevitApiOnline.SpaceMapping.SpaceMappingAppShow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Space Mapping" Height="480" Width="620"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <!-- 0: File link -->
+            <RowDefinition Height="Auto"/>
+            <!-- 1: Category -->
+            <RowDefinition Height="20"/>
+            <!-- 2: Spacer -->
+            <RowDefinition Height="Auto"/>
+            <!-- 3: Section title -->
+            <RowDefinition Height="Auto"/>
+            <!-- 4: Link param row -->
+            <RowDefinition Height="Auto"/>
+            <!-- 5: Model param row + Add -->
+            <RowDefinition Height="Auto"/>
+            <!-- 6: Search distance -->
+            <RowDefinition Height="*"/>
+            <!-- 7: DataGrid -->
+            <RowDefinition Height="Auto"/>
+            <!-- 8: Buttons -->
+        </Grid.RowDefinitions>
+
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <!-- labels -->
+            <ColumnDefinition Width="*"/>
+            <!-- main controls -->
+            <ColumnDefinition Width="Auto"/>
+            <!-- Add button -->
+        </Grid.ColumnDefinitions>
+
+        <!-- File Link -->
+        <TextBlock Grid.Row="0" Grid.Column="0"
+                   Text="File Link:" VerticalAlignment="Center"
+                   Margin="0,0,8,5" />
+        <ComboBox Grid.Row="0" Grid.Column="1"
+                  ItemsSource="{Binding LinkOptions}"
+                  DisplayMemberPath="Name"
+                  SelectedItem="{Binding SelectedLink, Mode=TwoWay}"
+                  Margin="0,0,0,5"
+                  HorizontalAlignment="Left"
+                  Width="380" />
+
+        <!-- Category -->
+        <TextBlock Grid.Row="1" Grid.Column="0"
+                   Text="Category trong model:" VerticalAlignment="Center"
+                   Margin="0,0,8,5" />
+        <ComboBox Grid.Row="1" Grid.Column="1"
+                  ItemsSource="{Binding CategoryOptions}"
+                  DisplayMemberPath="Name"
+                  SelectedItem="{Binding SelectedCategory, Mode=TwoWay}"
+                  Margin="0,0,0,5"
+                  HorizontalAlignment="Left"
+                  Width="380" />
+
+        <!-- Section title -->
+        <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
+                   Text="Parameter Mapping" FontWeight="Bold"
+                   Margin="0,0,0,8" />
+
+        <!-- Parameter file link -->
+        <TextBlock Grid.Row="4" Grid.Column="0"
+                   Text="Parameter file link:" VerticalAlignment="Center"
+                   Margin="0,0,8,5" />
+        <ComboBox Grid.Row="4" Grid.Column="1"
+                  ItemsSource="{Binding LinkParameterOptions}"
+                  SelectedItem="{Binding SelectedLinkParameter, Mode=TwoWay}"
+                  Margin="0,0,0,5"
+                  HorizontalAlignment="Left"
+                  Width="260"
+                  IsEditable="False" />
+
+        <!-- Parameter model + Add button -->
+        <TextBlock Grid.Row="5" Grid.Column="0"
+                   Text="Parameter model:" VerticalAlignment="Center"
+                   Margin="0,0,8,5" />
+        <ComboBox Grid.Row="5" Grid.Column="1"
+                  ItemsSource="{Binding MainParameterOptions}"
+                  SelectedItem="{Binding SelectedMainParameter, Mode=TwoWay}"
+                  Margin="0,0,0,5"
+                  HorizontalAlignment="Left"
+                  Width="260"
+                  IsEditable="False" />
+        <Button Grid.Row="5" Grid.Column="2"
+                Content="Thêm mapping"
+                Margin="8,0,0,5"
+                Padding="10,2"
+                Click="AddMapping_Click" />
+
+        <!-- Search distance -->
+        <TextBlock Grid.Row="6" Grid.Column="0"
+                   Text="Khoảng cách bắn tới Space (mm):"
+                   VerticalAlignment="Center"
+                   Margin="0,0,8,5" />
+        <TextBox Grid.Row="6" Grid.Column="1"
+                 Text="{Binding SearchDistanceMm, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 Margin="0,0,0,5"
+                 HorizontalAlignment="Left"
+                 Width="120" />
+
+        <!-- DataGrid: danh sách các cặp mapping -->
+        <DataGrid Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="3"
+                  ItemsSource="{Binding Mappings}"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  HeadersVisibility="Column"
+                  Margin="0,5,0,5"
+                  Height="200">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Parameter file link"
+                                    Width="*"
+                                    Binding="{Binding LinkParameterName}" />
+                <DataGridTextColumn Header="Parameter model"
+                                    Width="*"
+                                    Binding="{Binding SelectedMainParameterName}" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,10,0,0">
+            <Button Content="OK" Width="80" Margin="5,0,0,0"
+                    IsDefault="True"
+                    Click="OK_Click" />
+            <Button Content="Cancel" Width="80" Margin="5,0,0,0"
+                    IsCancel="True"
+                    Click="Cancel_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

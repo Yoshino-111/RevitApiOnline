@@ -1,0 +1,174 @@
+﻿<Window x:Class="RevitApiOnline.Insulation.PipeDuctInsulationWpf"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Insulation"
+        Height="350" Width="900"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <!-- 0: Scope -->
+            <RowDefinition Height="Auto"/>
+            <!-- 1: Insulation types -->
+            <RowDefinition Height="Auto"/>
+            <!-- 2: Header -->
+            <RowDefinition Height="Auto"/>
+            <!-- 3: Pipe -->
+            <RowDefinition Height="Auto"/>
+            <!-- 4: Duct round -->
+            <RowDefinition Height="Auto"/>
+            <!-- 5: Duct rect -->
+            <RowDefinition Height="Auto"/>
+            <!-- 6: Pipe fittings -->
+            <RowDefinition Height="Auto"/>
+            <!-- 7: Duct fittings -->
+            <RowDefinition Height="*"/>
+            <!-- 8: Spacer -->
+            <RowDefinition Height="Auto"/>
+            <!-- 9: Buttons -->
+        </Grid.RowDefinitions>
+
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="190"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="200"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Scope row -->
+        <Label Grid.Row="0" Grid.Column="0"
+               Content="Phạm vi áp dụng:"
+               VerticalAlignment="Center"/>
+        <ComboBox Grid.Row="0" Grid.Column="1"
+                  Grid.ColumnSpan="3"
+                  SelectedIndex="{Binding ScopeOption}"
+                  Height="24" Margin="2,2,0,2">
+            <ComboBoxItem Content="Toàn bộ model"/>
+            <ComboBoxItem Content="Chỉ trong Active View"/>
+        </ComboBox>
+
+        <!-- Insulation Type row -->
+        <TextBlock Grid.Row="1" Grid.Column="0"
+                   Text="Pipe insulation type:"
+                   VerticalAlignment="Center" Margin="0,4,4,4"/>
+        <ComboBox Grid.Row="1" Grid.Column="1"
+                  ItemsSource="{Binding PipeInsulationTypes}"
+                  SelectedItem="{Binding SelectedPipeInsulationType}"
+                  DisplayMemberPath="Name"
+                  Height="22" Margin="2"/>
+
+        <TextBlock Grid.Row="1" Grid.Column="2"
+                   Text="Duct insulation type:"
+                   VerticalAlignment="Center" Margin="8,4,4,4"/>
+        <ComboBox Grid.Row="1" Grid.Column="3"
+                  ItemsSource="{Binding DuctInsulationTypes}"
+                  SelectedItem="{Binding SelectedDuctInsulationType}"
+                  DisplayMemberPath="Name"
+                  Height="22" Margin="2"/>
+
+        <!-- Header row -->
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="Đối tượng"
+                   FontWeight="Bold" Margin="0,8,0,2"/>
+        <TextBlock Grid.Row="2" Grid.Column="1" Text="Size tối thiểu (mm)"
+                   FontWeight="Bold" Margin="0,8,0,2"/>
+        <TextBlock Grid.Row="2" Grid.Column="2" Text="System Name (chứa…)"
+                   FontWeight="Bold" Margin="0,8,0,2"/>
+        <TextBlock Grid.Row="2" Grid.Column="3" Text="Độ dày insulation (mm)"
+                   FontWeight="Bold" Margin="0,8,0,2"/>
+
+        <!-- PIPE -->
+        <CheckBox Grid.Row="3" Grid.Column="0"
+                  Content="Pipes (Ø)"
+                  IsChecked="{Binding EnablePipe}"
+                  VerticalAlignment="Center"/>
+        <TextBox Grid.Row="3" Grid.Column="1"
+                 Text="{Binding PipeMinSizeMm}"
+                 Height="22" Margin="2"/>
+        <TextBox Grid.Row="3" Grid.Column="2"
+                 Text="{Binding PipeSystemNameFilter}"
+                 Height="22" Margin="2"/>
+        <TextBox Grid.Row="3" Grid.Column="3"
+                 Text="{Binding PipeInsulationThicknessMm}"
+                 Height="22" Margin="2"/>
+
+        <!-- DUCT ROUND -->
+        <CheckBox Grid.Row="4" Grid.Column="0"
+                  Content="Duct tròn (Ø)"
+                  IsChecked="{Binding EnableDuctRound}"
+                  VerticalAlignment="Center"/>
+        <TextBox Grid.Row="4" Grid.Column="1"
+                 Text="{Binding DuctRoundMinDiameterMm}"
+                 Height="22" Margin="2"/>
+        <TextBox Grid.Row="4" Grid.Column="2"
+                 Text="{Binding DuctSystemNameFilter}"
+                 Height="22" Margin="2"/>
+        <TextBox Grid.Row="4" Grid.Column="3"
+                 Text="{Binding DuctInsulationThicknessMm}"
+                 Height="22" Margin="2"/>
+
+        <!-- DUCT RECT -->
+        <CheckBox Grid.Row="5" Grid.Column="0"
+                  Content="Duct chữ nhật (WxH)"
+                  IsChecked="{Binding EnableDuctRect}"
+                  VerticalAlignment="Center"/>
+        <StackPanel Grid.Row="5" Grid.Column="1"
+                    Orientation="Horizontal" Margin="2,0,2,0">
+            <TextBox Width="80" Margin="0,0,4,0"
+                     Text="{Binding DuctRectMinWidthMm}"
+                     Height="22"/>
+            <TextBlock Text="x" VerticalAlignment="Center"/>
+            <TextBox Width="80" Margin="4,0,0,0"
+                     Text="{Binding DuctRectMinHeightMm}"
+                     Height="22"/>
+        </StackPanel>
+        <TextBox Grid.Row="5" Grid.Column="2"
+                 Text="{Binding DuctSystemNameFilter}"
+                 Height="22" Margin="2"/>
+        <TextBox Grid.Row="5" Grid.Column="3"
+                 Text="{Binding DuctInsulationThicknessMm}"
+                 Height="22" Margin="2"/>
+
+        <!-- PIPE FITTINGS -->
+        <CheckBox Grid.Row="6" Grid.Column="0"
+                  Content="Pipe fittings"
+                  IsChecked="{Binding EnablePipeFittings}"
+                  VerticalAlignment="Center"/>
+        <TextBlock Grid.Row="6" Grid.Column="1"
+                   Text="-" HorizontalAlignment="Center"
+                   VerticalAlignment="Center"/>
+        <TextBox Grid.Row="6" Grid.Column="2"
+                 Text="{Binding PipeFittingSystemNameFilter}"
+                 Height="22" Margin="2"/>
+        <TextBox Grid.Row="6" Grid.Column="3"
+                 Text="{Binding PipeFittingInsulationThicknessMm}"
+                 Height="22" Margin="2"/>
+
+        <!-- DUCT FITTINGS -->
+        <CheckBox Grid.Row="7" Grid.Column="0"
+                  Content="Duct fittings"
+                  IsChecked="{Binding EnableDuctFittings}"
+                  VerticalAlignment="Center"/>
+        <TextBlock Grid.Row="7" Grid.Column="1"
+                   Text="-" HorizontalAlignment="Center"
+                   VerticalAlignment="Center"/>
+        <TextBox Grid.Row="7" Grid.Column="2"
+                 Text="{Binding DuctFittingSystemNameFilter}"
+                 Height="22" Margin="2"/>
+        <TextBox Grid.Row="7" Grid.Column="3"
+                 Text="{Binding DuctFittingInsulationThicknessMm}"
+                 Height="22" Margin="2"/>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="9" Grid.ColumnSpan="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,10,0,0">
+            <Button Width="120" Height="26" Margin="4,0"
+                    Content="Apply insulation"
+                    Click="ButtonApply_Click"/>
+            <Button Width="80" Height="26" Margin="4,0"
+                    Content="Close"
+                    Click="ButtonClose_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

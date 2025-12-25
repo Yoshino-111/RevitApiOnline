@@ -1,0 +1,48 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0-windows7.0</TargetFramework>
+		<ImplicitUsings>disable</ImplicitUsings>
+		<Nullable>disable</Nullable>
+		<UseWindowsForms>true</UseWindowsForms>
+		<UseWPF>true</UseWPF>
+		<PlatformTarget>x64</PlatformTarget>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <Compile Remove="App.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Remove="Images\icons8crop16.png" />
+	  <None Remove="WPFBasic\image.png" />
+	</ItemGroup>
+
+
+	<ItemGroup>
+    <Reference Include="AdWindows">
+      <HintPath>C:\Program Files\Autodesk\Revit 2025\AdWindows.dll</HintPath>
+    </Reference>
+    <Reference Include="RevitAPI">
+      <HintPath>C:\Program Files\Autodesk\Revit 2025\RevitAPI.dll</HintPath>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>C:\Program Files\Autodesk\Revit 2025\RevitAPIUI.dll</HintPath>
+    </Reference>
+    <Reference Include="UIFramework">
+      <HintPath>C:\Program Files\Autodesk\Revit 2025\UIFramework.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+
+	<ItemGroup>
+	  <Resource Include="WPFBasic\image.png" />
+	</ItemGroup>
+
+
+	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
+		<Exec Command="xcopy &quot;$(TargetPath)&quot; &quot;C:\ProgramData\Autodesk\Revit\Addins\2025\LucNguyenInsulation\&quot; /Y /E /C /Q" />
+	</Target>
+
+</Project>

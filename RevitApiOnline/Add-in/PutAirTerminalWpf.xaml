@@ -1,0 +1,58 @@
+﻿<Window x:Class="RevitApiOnline.Add_in.PutAirTerminalWpf"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:RevitApiOnline.Add_in"
+             mc:Ignorable="d"
+             Title="PutAirTerminal"
+             Height="220" Width="400" WindowStartupLocation="CenterOwner" Topmost="False"
+             d:DataContext="{d:DesignInstance local:AirTerminalDataContext}">
+    <Grid Margin="5">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="0.5*"/>
+            <ColumnDefinition/>
+        </Grid.ColumnDefinitions>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40"/>
+            <RowDefinition Height="40"/>
+            <RowDefinition Height="40"/>
+            <RowDefinition Height="40"/>
+            <RowDefinition Height="40"/>
+        </Grid.RowDefinitions>
+        
+        <Label  Content="Family" VerticalContentAlignment="Center"/>
+        <ComboBox SelectionChanged="comboboxFamilyChanged" Name="comboboxFamily" Grid.Column="1" Height="35" SelectedItem="{Binding familySelected}">
+            <ComboBox.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding Name}"/>
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
+
+        <Label Content="Type" Grid.Row="1" VerticalContentAlignment="Center"/>
+        <ComboBox Name="comboboxFamilyType" Grid.Column="1" Grid.Row="1" Height="35" SelectedItem="{Binding typeSelected}">
+            <ComboBox.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding Name}"/>
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
+
+        <Label Content="Level" Grid.Row="2" VerticalContentAlignment="Center"/>
+        <ComboBox Name="comboboxLevel" Grid.Column="1" Grid.Row="2" Height="35" SelectedItem="{Binding levelSelected}">
+            <ComboBox.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding Name}"/>
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
+        
+        <Label Content="Offset" Grid.Row="3" VerticalContentAlignment="Center"/>
+        <TextBox  Grid.Row="3" Grid.Column="1" Height="35" Text="{Binding offset}"/>
+        
+        <Button Click="clickData" Content="Put" Grid.Column="1" VerticalContentAlignment="Center"
+                Width="50" Height="25" Grid.Row="4" HorizontalAlignment="Right" Margin="5"/>
+    </Grid>
+</Window>
