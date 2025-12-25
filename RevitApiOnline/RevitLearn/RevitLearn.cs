@@ -1,14 +1,7 @@
-﻿using Autodesk.Revit.DB.Mechanical;
-using Autodesk.Revit.DB.Plumbing;
-using Autodesk.Revit.DB.Structure;
+﻿
 using Autodesk.Revit.DB;
-using Autodesk.Revit.UI.Selection;
 using Autodesk.Revit.UI;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using RevitApiOnline.Shared.Implements;
 
 namespace RevitApiOnline.RevitLearn
