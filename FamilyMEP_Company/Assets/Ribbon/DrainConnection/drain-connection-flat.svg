@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Horizontal drainage main -->
+    <path d="M16 25H30" stroke="#43515D" stroke-width="4"/>
+    <path d="M16 24.4H30" stroke="#74818B" stroke-width="1.1" opacity=".7"/>
+
+    <!-- Sloped branch from the drain to the wye -->
+    <path d="M7.6 9.2L10.1 12L18.3 22.4L20.4 25" stroke="#43515D" stroke-width="4"/>
+    <path d="M7.6 9.2L10.1 12L18.3 22.4L20.4 25" stroke="#168BE8" stroke-width="2"/>
+
+    <!-- Two compact 45-degree elbows -->
+    <path d="M7.4 9.1L9.9 11.9" stroke="#FF6B1A" stroke-width="2.1"/>
+    <path d="M10.1 12.1L11.8 14.3" stroke="#FF9B31" stroke-width="2.1"/>
+
+    <!-- Wye connection -->
+    <path d="M18.4 22.5L20.4 25H24" stroke="#FF6B1A" stroke-width="2.3"/>
+
+    <!-- Floor drain -->
+    <circle cx="5.8" cy="6" r="4.2" fill="#FFFFFF" stroke="#168BE8" stroke-width="1.6"/>
+    <circle cx="5.8" cy="6" r="2.7" fill="#DDF4FF" stroke="#08A9E8" stroke-width=".8"/>
+    <path d="M4 4.8H7.6M3.7 6H7.9M4 7.2H7.6" stroke="#236B9D" stroke-width=".65"/>
+
+    <!-- Main flow indicator -->
+    <path d="M25.6 21.8L29 25L25.6 28.2" stroke="#18B77A" stroke-width="1.5"/>
+  </g>
+</svg>
