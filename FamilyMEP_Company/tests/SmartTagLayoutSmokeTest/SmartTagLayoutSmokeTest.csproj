@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagNearHostReplay.cs" Link="SmartTagNearHostReplay.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagStandardNearHostLayout.cs" Link="SmartTagStandardNearHostLayout.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagStandardV2Layout.cs" Link="SmartTagStandardV2Layout.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagLayoutEngine.cs"
+             Link="SmartTagLayoutEngine.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagCompactGrouping.cs"
+             Link="SmartTagCompactGrouping.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagCompactGroupLayout.cs"
+             Link="SmartTagCompactGroupLayout.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagGuidedZoneLayout.cs"
+             Link="SmartTagGuidedZoneLayout.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagFreePocketAnalyzer.cs"
+             Link="SmartTagFreePocketAnalyzer.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagLeftLayout.cs"
+             Link="SmartTagLeftLayout.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagRightLayout.cs"
+             Link="SmartTagRightLayout.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagArchitectureClearance.cs"
+             Link="SmartTagArchitectureClearance.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagManualAlignment.cs"
+             Link="SmartTagManualAlignment.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagStackRouting.cs"
+             Link="SmartTagStackRouting.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagMepClearance.cs"
+             Link="SmartTagMepClearance.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagDuctChangeRules.cs"
+             Link="SmartTagDuctChangeRules.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagDuctDensity.cs"
+             Link="SmartTagDuctDensity.cs" />
+  </ItemGroup>
+</Project>
