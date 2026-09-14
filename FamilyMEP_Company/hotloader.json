@@ -1,0 +1,6 @@
+{
+    "PluginAssemblyPath":  "..\\plugin-output\\FamilyMEP.Plugin.dll",
+    "PluginTypeName":  "FamilyMEP.Plugin.ValveBuilderPlugin",
+    "ShadowRoot":  "..\\shadow",
+    "LogFile":  "..\\logs\\hotloader.log"
+}
