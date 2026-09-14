@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>FamilyMEP 2025</Name>
+    <Assembly>C:\Source\FamilyMEP_Company\deploy\FamilyMEP.Loader.dll</Assembly>
+    <AddInId>7882C65E-E2BF-4639-B8CB-6260A07C93B3</AddInId>
+    <FullClassName>RevitHotLoader2025.Application</FullClassName>
+    <VendorId>FMEP</VendorId>
+    <VendorDescription>FamilyMEP</VendorDescription>
+  </AddIn>
+</RevitAddIns>
