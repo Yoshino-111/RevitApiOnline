@@ -1,0 +1,180 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Quick Tag Align"
+        Width="280" Height="94"
+        WindowStyle="None" ResizeMode="NoResize"
+        AllowsTransparency="True" Background="Transparent"
+        ShowInTaskbar="False" ShowActivated="False" Topmost="True">
+    <Window.Resources>
+        <Style x:Key="QuickActionButton" TargetType="Button">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#2B9BFF" Offset="0"/>
+                        <GradientStop Color="#1479EE" Offset="0.58"/>
+                        <GradientStop Color="#0C61D5" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderBrush" Value="#75C5FF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="button_border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7" Padding="8,4">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="button_border" Property="Background" Value="#319FFF"/>
+                                <Setter TargetName="button_border" Property="BorderBrush" Value="#BCE5FF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="button_border" Property="Background" Value="#0759C7"/>
+                                <Setter TargetName="button_border" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.98" ScaleY="0.98"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="button_border" Property="Opacity" Value="0.48"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border Background="#F51B222A" BorderBrush="#4E6578" BorderThickness="1"
+            CornerRadius="9" Padding="6">
+        <Border.Effect>
+            <DropShadowEffect Color="#000000" BlurRadius="15" ShadowDepth="3" Opacity="0.48"/>
+        </Border.Effect>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="46"/>
+                <RowDefinition Height="4"/>
+                <RowDefinition Height="30"/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="3"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="4"/>
+                <ColumnDefinition Width="64"/>
+                <ColumnDefinition Width="6"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Thumb x:Name="quick_drag_handle" Grid.Column="0"
+                   Grid.RowSpan="3" Width="17" Height="80" Visibility="Collapsed"
+                   Cursor="SizeAll" ToolTip="Drag to move Quick Align">
+                <Thumb.Template>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border Background="#25313B" BorderBrush="#526A7D"
+                                BorderThickness="1" CornerRadius="4">
+                            <TextBlock Text="⋮" Foreground="#9FC6E4"
+                                       FontSize="17" FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Thumb.Template>
+            </Thumb>
+            <Button x:Name="quick_restore_smart_tag_btn" Grid.Column="2"
+                    Grid.RowSpan="3" Width="26" Height="40" Visibility="Collapsed"
+                    Content="▣" FontSize="13" FontWeight="Bold"
+                    Foreground="#DCEEFF" Background="#2A3540"
+                    BorderBrush="#587087" BorderThickness="1"
+                    Cursor="Hand" ToolTip="Restore Smart Tag Setup"/>
+            <ComboBox x:Name="quick_align_edge_combo" Grid.Column="4" Grid.Row="0"
+                      SelectedIndex="0" Height="46" Padding="7,4"
+                      FontWeight="SemiBold" FontSize="11"
+                      Foreground="#17212A" Background="#F4F8FB"
+                      BorderBrush="#6D8294" BorderThickness="1"
+                      ToolTip="Choose the real tag text edge to align.">
+                <ComboBoxItem Content="LEFT" Tag="Left"/>
+                <ComboBoxItem Content="RIGHT" Tag="Right"/>
+                <ComboBoxItem Content="STACK" Tag="Stack"/>
+            </ComboBox>
+            <Button x:Name="quick_align_tags_btn" Grid.Column="6" Grid.Row="0"
+                    Height="46" Style="{StaticResource QuickActionButton}"
+                    ToolTip="Pick one reference tag, then select target tags and click Finish.">
+                <StackPanel Orientation="Horizontal">
+                    <Viewbox Width="26" Height="26" Margin="0,0,7,0">
+                        <Canvas Width="36" Height="36">
+                            <!-- Alignment rail -->
+                            <Line X1="7" Y1="5" X2="7" Y2="31"
+                                  Stroke="#FFFFFF" StrokeThickness="2.4"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            <!-- Three tag cards aligned to the same edge -->
+                            <Border Canvas.Left="10" Canvas.Top="6" Width="19" Height="6"
+                                    CornerRadius="2" Background="#FFFFFF"/>
+                            <Border Canvas.Left="10" Canvas.Top="15" Width="15" Height="6"
+                                    CornerRadius="2" Background="#DDF2FF"/>
+                            <Border Canvas.Left="10" Canvas.Top="24" Width="21" Height="6"
+                                    CornerRadius="2" Background="#FFFFFF"/>
+                            <!-- Friendly sparkle -->
+                            <Path Data="M 30,3 L 31.4,6.1 L 34.5,7.5 L 31.4,8.9 L 30,12 L 28.6,8.9 L 25.5,7.5 L 28.6,6.1 Z"
+                                  Fill="#FFE17A"/>
+                        </Canvas>
+                    </Viewbox>
+                    <TextBlock x:Name="quick_action_text" Text="ALIGN TAGS" FontSize="11.5"
+                               FontWeight="Bold" Foreground="White"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Grid Grid.Column="4" Grid.ColumnSpan="3" Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="4"/>
+                    <ColumnDefinition Width="1.25*"/>
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="52"/>
+                        <ColumnDefinition Width="3"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="quick_auto_side_combo" Grid.Column="0"
+                              SelectedIndex="0" Height="30" Padding="3,2"
+                              FontWeight="SemiBold" FontSize="8.5"
+                              Foreground="#17212A" Background="#F4F8FB"
+                              BorderBrush="#8E78D4" BorderThickness="1"
+                              ToolTip="Choose whether AUTO places tags below or above the sample.">
+                        <ComboBoxItem Content="BELOW" Tag="Below"/>
+                        <ComboBoxItem Content="ABOVE" Tag="Above"/>
+                    </ComboBox>
+                    <Button x:Name="quick_auto_column_btn" Grid.Column="2"
+                        Height="30" Style="{StaticResource QuickActionButton}"
+                        Background="#7A55D8" BorderBrush="#C7B4FF"
+                        ToolTip="1) Pick tag mẫu. 2) Quét khung chạm text/leader. Tất cả tag được xếp xuống dưới tag mẫu.">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <TextBlock Text="↕" FontSize="13" FontWeight="Bold" Margin="0,0,4,0"/>
+                        <TextBlock Text="AUTO" FontSize="9.5" FontWeight="Bold"
+                                   Foreground="White" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    </Button>
+                </Grid>
+                <Button x:Name="quick_zone_tags_btn" Grid.Column="2"
+                        Height="30" Style="{StaticResource QuickActionButton}"
+                        Background="#168872" BorderBrush="#68DEC2"
+                        ToolTip="1) Quét khung chạm text/leader cần dời. 2) Quét vùng trống đích để xếp tag vào.">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <TextBlock Text="▧" FontSize="12" FontWeight="Bold" Margin="0,0,4,0"/>
+                        <TextBlock Text="MOVE TO ZONE" FontSize="9" FontWeight="Bold"
+                                   Foreground="White" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

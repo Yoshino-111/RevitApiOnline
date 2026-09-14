@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>FamilyMEP.Loader</AssemblyName>
+    <RootNamespace>RevitHotLoader2025</RootNamespace>
+    <Revit2025Dir>C:\Program Files\Autodesk\Revit 2025</Revit2025Dir>
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="RevitAPI">
+      <HintPath>$(Revit2025Dir)\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(Revit2025Dir)\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <ProjectReference Include="..\RevitHotReload.Abstractions\RevitHotReload.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\DrainConnectionRibbonAnimator.cs" Link="Ribbon\DrainConnectionRibbonAnimator.cs" />
+    <Compile Include="..\Shared\SprinklerModelerRibbonAnimator.cs" Link="Ribbon\SprinklerModelerRibbonAnimator.cs" />
+    <Compile Include="..\Shared\RibbonPanelColorizer.cs" Link="Ribbon\RibbonPanelColorizer.cs" />
+    <EmbeddedResource Include="..\Assets\Ribbon\DrainConnection\drain-connection-??-*.png"
+                      Link="Assets\Ribbon\DrainConnection\%(Filename)%(Extension)"
+                      LogicalName="FamilyMEP.RibbonIcons.DrainConnection.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\Assets\Ribbon\SprinklerModeler\sprinkler-modeler-??-*.png"
+                      Link="Assets\Ribbon\SprinklerModeler\%(Filename)%(Extension)"
+                      LogicalName="FamilyMEP.RibbonIcons.SprinklerModeler.%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,1033 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Exterior Wall Mapper"
+        Width="1540" Height="920" MinWidth="1280" MinHeight="760"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanResizeWithGrip"
+        Background="#F7F9FC" FontFamily="Segoe UI">
+    <Window.Resources>
+        <SolidColorBrush x:Key="Ink" Color="#172033"/>
+        <SolidColorBrush x:Key="Muted" Color="#657187"/>
+        <SolidColorBrush x:Key="Border" Color="#DDE3ED"/>
+        <SolidColorBrush x:Key="Blue" Color="#1155CC"/>
+        <SolidColorBrush x:Key="BlueHover" Color="#0D47B5"/>
+        <SolidColorBrush x:Key="BlueSoft" Color="#EAF2FF"/>
+        <SolidColorBrush x:Key="BlueLine" Color="#BFD3F5"/>
+        <SolidColorBrush x:Key="SurfaceAlt" Color="#F1F5FA"/>
+        <SolidColorBrush x:Key="Green" Color="#14966A"/>
+        <SolidColorBrush x:Key="Amber" Color="#F2A11B"/>
+        <DropShadowEffect x:Key="CardShadow" BlurRadius="12" ShadowDepth="1" Opacity="0.08"/>
+        <DropShadowEffect x:Key="RaisedShadow" BlurRadius="10" ShadowDepth="1" Opacity="0.11"/>
+
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" CornerRadius="5" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#F0F4FA"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.76"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.42"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="{StaticResource Blue}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Blue}"/>
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="Padding" Value="20,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" CornerRadius="6" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{StaticResource BlueHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.8"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.42"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Padding" Value="7,3"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="31"/>
+            <Setter Property="Padding" Value="7,4"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#CAD4E2"/>
+        </Style>
+        <Style TargetType="DataGrid">
+            <Setter Property="AutoGenerateColumns" Value="False"/>
+            <Setter Property="CanUserAddRows" Value="False"/>
+            <Setter Property="CanUserDeleteRows" Value="False"/>
+            <Setter Property="CanUserResizeRows" Value="False"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+            <Setter Property="RowHeaderWidth" Value="0"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#E8ECF2"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="AlternatingRowBackground" Value="#FBFCFE"/>
+            <Setter Property="RowHeight" Value="38"/>
+            <Setter Property="SelectionMode" Value="Extended"/>
+            <Setter Property="SelectionUnit" Value="FullRow"/>
+        </Style>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#F6F8FB"/>
+            <Setter Property="Foreground" Value="#25324A"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Padding" Value="9,8"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+        </Style>
+        <Style TargetType="DataGridRow">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#F2F7FF"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#DDEBFF"/>
+                    <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="TreeView">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="4"/>
+        </Style>
+        <Style TargetType="TreeViewItem">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="4,5"/>
+            <Setter Property="IsExpanded" Value="False"/>
+        </Style>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="Effect" Value="{StaticResource CardShadow}"/>
+        </Style>
+
+        <Style x:Key="MainTabItem" TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="TabSurface" Background="Transparent" BorderBrush="Transparent"
+                                BorderThickness="1" CornerRadius="7" Padding="16,9" Margin="0,0,4,0">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabSurface" Property="Background" Value="#F7FAFE"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource Blue}"/>
+                                <Setter TargetName="TabSurface" Property="Background" Value="White"/>
+                                <Setter TargetName="TabSurface" Property="BorderBrush" Value="{StaticResource Border}"/>
+                                <Setter TargetName="TabSurface" Property="Effect" Value="{StaticResource RaisedShadow}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="MainTabControl" TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid KeyboardNavigation.TabNavigation="Local">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Background="{StaticResource SurfaceAlt}" BorderBrush="{StaticResource Border}"
+                                    BorderThickness="1" CornerRadius="9" Padding="5" Margin="0,0,0,9">
+                                <TabPanel IsItemsHost="True" KeyboardNavigation.TabIndex="1"/>
+                            </Border>
+                            <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource Border}"
+                                    BorderThickness="1" CornerRadius="9" ClipToBounds="True">
+                                <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent"/>
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DetailTabItem" TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="TabSurface" Background="Transparent" BorderBrush="Transparent"
+                                BorderThickness="1" CornerRadius="6" Padding="13,7" Margin="0,0,4,0">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabSurface" Property="Background" Value="#F7FAFE"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource Blue}"/>
+                                <Setter TargetName="TabSurface" Property="Background" Value="{StaticResource BlueSoft}"/>
+                                <Setter TargetName="TabSurface" Property="BorderBrush" Value="{StaticResource BlueLine}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DetailTabControl" TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid KeyboardNavigation.TabNavigation="Local">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Background="#F7F9FC" BorderBrush="{StaticResource Border}"
+                                    BorderThickness="0,0,0,1" Padding="8,7">
+                                <TabPanel IsItemsHost="True"/>
+                            </Border>
+                            <ContentPresenter x:Name="PART_SelectedContentHost" Grid.Row="1"
+                                              ContentSource="SelectedContent"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SegmentTabItem" TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="TabSurface" Background="Transparent" CornerRadius="5"
+                                Padding="15,6" Margin="1">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabSurface" Property="Background" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="TabSurface" Property="Background" Value="{StaticResource Blue}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SegmentTabControl" TargetType="TabControl">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Border Background="{StaticResource SurfaceAlt}" BorderBrush="{StaticResource Border}"
+                                BorderThickness="1" CornerRadius="7" Padding="2" HorizontalAlignment="Left">
+                            <TabPanel IsItemsHost="True"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="82"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="32"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="White" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+            <Grid Margin="20,11">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0" MaxWidth="570" HorizontalAlignment="Stretch" Margin="0,0,18,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2.2*"/>
+                        <ColumnDefinition Width="1.45*"/>
+                        <ColumnDefinition Width="0.8*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock Text="PROJECT" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Muted}"/>
+                        <TextBlock x:Name="project_text" Text="Open a Revit project" FontSize="14" FontWeight="SemiBold"
+                                   Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                    <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="18,0,0,0">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="LINK HEALTH" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Muted}"/>
+                            <TextBlock x:Name="link_health_text" Text="●  Not scanned" FontSize="13" Margin="0,5,0,0" Foreground="{StaticResource Muted}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="18,0,0,0">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="LINKS" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Muted}"/>
+                            <TextBlock x:Name="links_scanned_header_text" Text="0 / 0" FontSize="14" FontWeight="SemiBold" Margin="0,5,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <Button x:Name="scan_btn" Style="{StaticResource PrimaryButton}" Margin="0,0,10,0" Content="◎  SCAN LINEAR COMPONENTS"/>
+                    <Button x:Name="export_btn" Margin="0,3" Content="▣  EXPORT EXCEL"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="370"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
+                <ScrollViewer x:Name="sidebar_scroll" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled" PanningMode="VerticalOnly">
+                <Grid Margin="18,17,14,17">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Margin="0,0,0,11">
+                        <TextBlock Text="LEVEL" FontSize="12" FontWeight="Bold"/>
+                        <TextBlock Text="Show all levels or filter one level" FontSize="10" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <TreeView x:Name="space_navigator" Grid.Row="1" MaxHeight="220" Margin="0,0,0,16"/>
+                    <StackPanel Grid.Row="2">
+                        <TextBlock Text="Orientation" FontSize="12" FontWeight="SemiBold"/>
+                        <ComboBox x:Name="orientation_filter_combo" Margin="0,6,0,12"/>
+                    </StackPanel>
+                    <StackPanel Grid.Row="3">
+                        <TextBlock Text="Status" FontSize="12" FontWeight="SemiBold"/>
+                        <ComboBox x:Name="status_filter_combo" Margin="0,6,0,14"/>
+                    </StackPanel>
+                    <Button x:Name="clear_filters_btn" Grid.Row="4" Content="↻  SHOW ALL LEVELS"/>
+                    <Border Grid.Row="5" Background="#F3F7FC" BorderBrush="#D7E4F6" BorderThickness="1"
+                            CornerRadius="7" Padding="11" Margin="0,16,0,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                                <TextBlock Text="ELEMENT ID(S)" FontSize="12" FontWeight="Bold"/>
+                                <TextBlock Text="Paste the copy-only Excel column here" FontSize="10"
+                                           Foreground="{StaticResource Muted}" Margin="0,3,0,0"/>
+                            </StackPanel>
+                            <TextBox x:Name="element_id_textbox" Grid.Row="1" MinHeight="145" Padding="9,7"
+                                     AcceptsReturn="True" TextWrapping="Wrap"
+                                     VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto"
+                                     ToolTip="Paste one or many linked Revit/IFC Element IDs separated by semicolon, comma, space or a new line."/>
+                            <Grid Grid.Row="2" Margin="0,9,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="focus_element_btn" Grid.Column="0" Margin="0,0,5,0"
+                                        Content="⌖  FOCUS 3D" ToolTip="Highlight all pasted linked Element IDs in red in the 3D focus view."/>
+                                <Button x:Name="focus_plan_btn" Grid.Column="1" Margin="5,0,0,0"
+                                        Content="▣  PLAN" ToolTip="Highlight the pasted linked Element IDs in the matching Floor Plan."/>
+                            </Grid>
+                            <StackPanel Grid.Row="3" Margin="0,13,0,0">
+                                <Grid Margin="1,0,1,4">
+                                    <TextBlock Text="CONTEXT TRANSPARENCY" FontSize="10" FontWeight="Bold"
+                                               Foreground="{StaticResource Muted}"/>
+                                    <TextBlock x:Name="context_transparency_text" Text="0%" HorizontalAlignment="Right"
+                                               FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Blue}"/>
+                                </Grid>
+                                <Slider x:Name="context_transparency_slider" Minimum="0" Maximum="90" Value="0"
+                                        TickFrequency="10" IsSnapToTickEnabled="False"
+                                        ToolTip="Fade the model context in the current Focus view. The transient red highlight stays opaque."/>
+                                <TextBlock Text="0% = normal · 90% = maximum fade" FontSize="9"
+                                           Foreground="{StaticResource Muted}" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <Border Grid.Row="6" Background="White" BorderBrush="{StaticResource Border}" BorderThickness="1"
+                            CornerRadius="6" Padding="10" Margin="0,12,0,0">
+                        <TextBlock Text="Excel → Element IDs Only (Copy/Paste) → FOCUS 3D. Use Level, Orientation and Status only to filter the result tables."
+                                   TextWrapping="Wrap" FontSize="10" Foreground="{StaticResource Muted}"/>
+                    </Border>
+                </Grid>
+                </ScrollViewer>
+            </Border>
+
+            <Grid Grid.Column="1" Margin="16,15,17,14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="92"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,12,12" Padding="18,12">
+                        <Grid>
+                            <StackPanel><TextBlock Text="TOTAL EXTERIOR AREA" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Muted}"/><TextBlock x:Name="total_area_text" Text="0.00 m²" FontSize="24" FontWeight="Bold" Margin="0,5,0,0"/></StackPanel>
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Center" Width="44" Height="34" CornerRadius="17" Background="#E6F8F6"><TextBlock Text="m²" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12" FontWeight="Bold" Foreground="#159A95"/></Border>
+                        </Grid>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource Card}" Margin="0,0,12,12" Padding="18,12">
+                        <Grid>
+                            <StackPanel><TextBlock Text="UNIQUE ASSEMBLIES" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Muted}"/><TextBlock x:Name="unique_assemblies_text" Text="0" FontSize="24" FontWeight="Bold" Margin="0,5,0,0"/></StackPanel>
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Center" Width="48" Height="34" CornerRadius="17" Background="{StaticResource BlueSoft}"><TextBlock Text="ASM" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Blue}"/></Border>
+                        </Grid>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource Card}" Margin="0,0,12,12" Padding="18,12">
+                        <Grid>
+                            <StackPanel><TextBlock Text="NEEDS REVIEW" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Muted}"/><TextBlock x:Name="needs_review_text" Text="0" FontSize="24" FontWeight="Bold" Margin="0,5,0,0" Foreground="{StaticResource Amber}"/></StackPanel>
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Center" Width="44" Height="34" CornerRadius="17" Background="#FFF4DF"><TextBlock Text="QA" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10" FontWeight="Bold" Foreground="#CF7E00"/></Border>
+                        </Grid>
+                    </Border>
+                    <Border Grid.Column="3" Style="{StaticResource Card}" Margin="0,0,0,12" Padding="18,12">
+                        <Grid>
+                            <StackPanel><TextBlock Text="LINKS SCANNED" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Muted}"/><TextBlock x:Name="links_scanned_text" Text="0 / 0" FontSize="24" FontWeight="Bold" Margin="0,5,0,0"/></StackPanel>
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Center" Width="48" Height="34" CornerRadius="17" Background="#E8F7F1"><TextBlock Text="RVT" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Green}"/></Border>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <TabControl x:Name="results_tabs" Grid.Row="1"
+                            Style="{StaticResource MainTabControl}"
+                            ItemContainerStyle="{StaticResource MainTabItem}">
+                    <TabItem Header="ROOM / ORIENTATION">
+                        <Grid Margin="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="64"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Background="#F3F7FC" BorderBrush="#D7E4F6" BorderThickness="1" CornerRadius="6" Padding="14,8" Margin="0,0,0,8">
+                                <TextBlock Text="Space summary for LINEAR components. EWA/EWI use the largest sun-exposed facade; IWA includes boundaries adjoining another Space. Technical layer checks are under DETAIL."
+                                           TextWrapping="Wrap" Foreground="{StaticResource Muted}"/>
+                            </Border>
+                            <DataGrid x:Name="room_summary_grid" Grid.Row="1" IsReadOnly="True"
+                                      SelectionMode="Extended" SelectionUnit="FullRow"
+                                      ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="LEVEL" Binding="{Binding Level}" Width="90"/>
+                                    <DataGridTextColumn Header="SPACE NUMBER / NAME" Binding="{Binding SpaceGroupLabel}" Width="*" MinWidth="330"/>
+                                    <DataGridTextColumn Header="LINEAR TYPE" Binding="{Binding LinearCategories}" Width="105"/>
+                                    <DataGridTextColumn Header="ORIENTATION" Binding="{Binding Orientation}" Width="140"/>
+                                    <DataGridTextColumn Header="WALL GROUPS" Binding="{Binding WallGroupCount}" Width="140"/>
+                                    <DataGridTextColumn Header="WALL TYPES" Binding="{Binding ArchitecturalWallTypeCount}" Width="120"/>
+                                    <DataGridTextColumn Header="LAYER COUNT (MIN - MAX)" Binding="{Binding LayerCountDisplay}" Width="190"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="DETAIL">
+                        <TabControl x:Name="detail_tabs"
+                                    Style="{StaticResource DetailTabControl}"
+                                    ItemContainerStyle="{StaticResource DetailTabItem}">
+                    <TabItem Header="STRUCTURES">
+                        <Grid Margin="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="245"/>
+                            </Grid.RowDefinitions>
+
+                <DataGrid x:Name="walls_grid" Grid.Row="1" Margin="0,12,0,0" IsReadOnly="True"
+                          ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="LEVEL" Binding="{Binding Level}" Width="65"/>
+                        <DataGridTextColumn Header="SPACE NUMBER / NAME" Binding="{Binding SpaceGroupLabel}" Width="215"/>
+                        <DataGridTextColumn Header="LINEAR" Binding="{Binding LinearCategory}" Width="62"/>
+                        <DataGridTextColumn Header="ORIENT." Binding="{Binding Orientation}" Width="78"/>
+                        <DataGridTextColumn Header="TOTAL THICK." Binding="{Binding ThicknessDisplay}" Width="92"/>
+                        <DataGridTextColumn Header="LAYERS" Binding="{Binding LayerCount}" Width="54"/>
+                        <DataGridTextColumn Header="IFC CATEGORY" Binding="{Binding IfcCategory}" Width="110"/>
+                        <DataGridTextColumn Header="AREA m²" Binding="{Binding ExteriorAreaDisplay}" Width="68"/>
+                        <DataGridTextColumn Header="COUNT" Binding="{Binding WallCount}" Width="54"/>
+                        <DataGridTextColumn Header="BATCH" Binding="{Binding BatchId}" Width="58"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock x:Name="detail_empty_text" Grid.Row="1" Visibility="Collapsed"
+                           Margin="18,62,18,18" Padding="16" TextWrapping="Wrap"
+                           HorizontalAlignment="Center" VerticalAlignment="Top"
+                           Background="#FFF8E8" Foreground="#8A5A00" FontWeight="SemiBold"/>
+
+                <Border Grid.Row="0" Style="{StaticResource Card}" Padding="0">
+                    <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="38"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <Border Background="#F6F8FB" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" Padding="12,0">
+                            <Grid><TextBlock Text="GROUPED WALL STRUCTURES" FontWeight="Bold" VerticalAlignment="Center"/><TextBlock x:Name="batch_count_text" Text="0" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource Blue}" FontWeight="Bold"/></Grid>
+                        </Border>
+                        <DataGrid x:Name="batches_grid" Grid.Row="1" BorderThickness="0" IsReadOnly="False">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="GROUP" Binding="{Binding BatchId}" IsReadOnly="True" Width="75"/>
+                                <DataGridTextColumn Header="LINEAR" Binding="{Binding LinearCategory}" IsReadOnly="True" Width="62"/>
+                                <DataGridTextColumn Header="TOTAL / LAYERS" Binding="{Binding SourceAssembly}" IsReadOnly="True" Width="220"/>
+                                <DataGridTemplateColumn Header="DETECTED LAYERS (THICK -> THIN)" IsReadOnly="True" Width="320" MinWidth="260">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding LayerTreeDisplay}"
+                                                       FontFamily="Consolas"
+                                                       LineHeight="18"
+                                                       TextWrapping="Wrap"
+                                                       ToolTip="{Binding LayerDescription}"
+                                                       VerticalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="RECOMMENDED 2-3 LAYERS" IsReadOnly="True" Width="320" MinWidth="260">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding RecommendedLayerTreeDisplay}"
+                                                       FontFamily="Consolas"
+                                                       LineHeight="18"
+                                                       TextWrapping="Wrap"
+                                                       ToolTip="{Binding RecommendedLayerDescription}"
+                                                       VerticalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="TARGET LINEAR" Width="150">
+                                    <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBox Text="{Binding TargetLinear, UpdateSourceTrigger=PropertyChanged}" Margin="5,3" ToolTip="Enter the LINEAR composite component short name, for example B13."/></DataTemplate></DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="WALL COUNT" Binding="{Binding WallCount}" IsReadOnly="True" Width="90"/>
+                                <DataGridTextColumn Header="EXTERIOR AREA (m²)" Binding="{Binding ExteriorAreaDisplay}" IsReadOnly="True" Width="125"/>
+                                <DataGridTemplateColumn Header="STATUS" Width="95">
+                                    <DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><Ellipse Width="8" Height="8" Fill="{Binding StatusColor}" Margin="0,0,7,0"/><TextBlock Text="{Binding Status}"/></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </Border>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="ARCHITECTURAL WALL TYPES">
+                        <Grid Margin="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="44"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Background="#F3F7FC" BorderBrush="#D7E4F6" BorderThickness="1" CornerRadius="6" Padding="14,8" Margin="0,0,0,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Architectural walls, parts and windows are grouped by type, thickness and layer count for recheck only."
+                                               TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,0,18,0"/>
+                                    <TextBlock x:Name="architectural_wall_count_text" Text="0 type group(s)"
+                                               Grid.Column="1"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource Blue}" FontWeight="Bold"/>
+                                </Grid>
+                            </Border>
+                            <DataGrid x:Name="architectural_walls_grid" Grid.Row="1" IsReadOnly="True"
+                                      SelectionMode="Extended" SelectionUnit="FullRow"
+                                      ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="ARCHITECTURAL TYPE" Binding="{Binding TypeName}" Width="*" MinWidth="320"/>
+                                    <DataGridTextColumn Header="LINEAR" Binding="{Binding LinearCategories}" Width="72"/>
+                                    <DataGridTextColumn Header="TOTAL THICK." Binding="{Binding ThicknessDisplay}" Width="110"/>
+                                    <DataGridTextColumn Header="LAYERS" Binding="{Binding LayerCount}" Width="70"/>
+                                    <DataGridTextColumn Header="ELEMENT COUNT" Binding="{Binding ElementCount}" Width="110"/>
+                                    <DataGridTextColumn Header="SPACE COUNT" Binding="{Binding SpaceCount}" Width="100"/>
+                                    <DataGridTextColumn Header="LEVELS" Binding="{Binding Levels}" Width="130"/>
+                                    <DataGridTextColumn Header="ORIENTATIONS" Binding="{Binding Orientations}" Width="150"/>
+                                    <DataGridTextColumn Header="LINK CHAIN" Binding="{Binding LinkChain}" Width="300"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="THICKNESS / SPACES">
+                        <Grid Margin="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="44"/>
+                                <RowDefinition Height="270"/>
+                                <RowDefinition Height="38"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Background="#F3F7FC" BorderBrush="#D7E4F6" BorderThickness="1" CornerRadius="6" Padding="14,8" Margin="0,0,0,8">
+                                <Grid>
+                                    <TextBlock Text="Layers are grouped by rounded thickness. Select 200 mm, 60 mm, 20 mm, etc. to list every associated Space below."
+                                               Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,190,0"/>
+                                    <TextBlock x:Name="thickness_group_count_text" Text="0 thickness group(s)"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource Blue}" FontWeight="Bold"/>
+                                </Grid>
+                            </Border>
+                            <DataGrid x:Name="thickness_groups_grid" Grid.Row="1" IsReadOnly="True"
+                                      SelectionMode="Extended" SelectionUnit="FullRow">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="THICKNESS" Binding="{Binding ThicknessDisplay}" Width="100"/>
+                                    <DataGridTextColumn Header="LINEAR" Binding="{Binding LinearCategories}" Width="72"/>
+                                    <DataGridTextColumn Header="LAYER / WALL TYPES" Binding="{Binding LayerTypes}" Width="*" MinWidth="340"/>
+                                    <DataGridTextColumn Header="TYPE COUNT" Binding="{Binding LayerTypeCount}" Width="90"/>
+                                    <DataGridTextColumn Header="SPACE COUNT" Binding="{Binding SpaceCount}" Width="100"/>
+                                    <DataGridTextColumn Header="STRUCTURES" Binding="{Binding StructureCount}" Width="95"/>
+                                    <DataGridTextColumn Header="ELEMENTS" Binding="{Binding ElementCount}" Width="85"/>
+                                    <DataGridTextColumn Header="AREA mÂ²" Binding="{Binding ExteriorAreaDisplay}" Width="90"/>
+                                    <DataGridTextColumn Header="LEVELS" Binding="{Binding Levels}" Width="120"/>
+                                    <DataGridTextColumn Header="ORIENTATIONS" Binding="{Binding Orientations}" Width="145"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <Border Grid.Row="2" Background="#F6F8FB" BorderBrush="{StaticResource Border}" BorderThickness="1,1,1,0" Padding="12,0">
+                                <Grid>
+                                    <TextBlock Text="SPACES USING SELECTED THICKNESS" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="thickness_space_count_text" Text="Select a thickness group above"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource Blue}" FontWeight="Bold"/>
+                                </Grid>
+                            </Border>
+                            <DataGrid x:Name="thickness_spaces_grid" Grid.Row="3" IsReadOnly="True"
+                                      SelectionMode="Extended" SelectionUnit="FullRow">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="LEVEL" Binding="{Binding Level}" Width="80"/>
+                                    <DataGridTextColumn Header="SPACE NUMBER" Binding="{Binding SpaceNumber}" Width="130"/>
+                                    <DataGridTextColumn Header="SPACE NAME" Binding="{Binding SpaceName}" Width="*" MinWidth="260"/>
+                                    <DataGridTextColumn Header="LINEAR" Binding="{Binding LinearCategory}" Width="72"/>
+                                    <DataGridTextColumn Header="ORIENTATION" Binding="{Binding Orientation}" Width="110"/>
+                                    <DataGridTextColumn Header="MATCHING LAYER TYPES" Binding="{Binding MatchingLayerTypes}" Width="350"/>
+                                    <DataGridTextColumn Header="ASSEMBLY TOTAL" Binding="{Binding AssemblyThickness}" Width="120"/>
+                                    <DataGridTextColumn Header="LAYERS" Binding="{Binding AssemblyLayers}" Width="70"/>
+                                    <DataGridTextColumn Header="AREA mÂ²" Binding="{Binding ExteriorArea}" Width="90"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </TabItem>
+                        </TabControl>
+                    </TabItem>
+
+                    <TabItem Header="LINEAR BATCH PLAN">
+                        <Grid Margin="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="64"/>
+                                <RowDefinition Height="32"/>
+                                <RowDefinition Height="225"/>
+                                <RowDefinition Height="82"/>
+                                <RowDefinition Height="38"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="#F3F7FC" BorderBrush="#D7E4F6" BorderThickness="1" CornerRadius="6" Padding="14,8" Margin="0,0,0,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Assign one LINEAR component to each detected EWA/IWA wall, EWI/IWI window or ED/ID door. Material layers remain detail-only and must not be added as separate LINEAR rows."
+                                                   Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,16,0"/>
+                                        <TextBlock x:Name="linear_plan_count_text" Text="0 component batch(es)"
+                                                   Foreground="{StaticResource Blue}" FontWeight="Bold" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <CheckBox x:Name="global_ewa_checkbox" Content="ONE COMPONENT FOR ALL EWA"
+                                                  VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,10,0"
+                                                  ToolTip="When enabled, every confirmed exterior-wall room face receives the same LINEAR U-value component."/>
+                                        <TextBlock Text="TARGET" VerticalAlignment="Center" Foreground="{StaticResource Muted}" Margin="0,0,5,0"/>
+                                        <TextBox x:Name="global_ewa_component_textbox" Width="82" Height="28" VerticalContentAlignment="Center"
+                                                 Margin="0,0,10,0" ToolTip="Enter the global exterior-wall component, for example B533."/>
+                                        <Button x:Name="copy_linear_plan_btn" Content="COPY FIND &amp; REPLACE PLAN"
+                                                Padding="14,7" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <TabControl x:Name="linear_kind_tabs" Grid.Row="1" Margin="0,0,0,4"
+                                        Style="{StaticResource SegmentTabControl}"
+                                        ItemContainerStyle="{StaticResource SegmentTabItem}">
+                                <TabItem Header="EWA  EXTERIOR WALLS"/>
+                                <TabItem Header="EWI  EXTERIOR WINDOWS"/>
+                                <TabItem Header="IWA  INTERIOR WALLS"/>
+                                <TabItem Header="IWI  INTERIOR WINDOWS"/>
+                                <TabItem Header="ED  EXTERIOR DOORS"/>
+                                <TabItem Header="ID  INTERIOR DOORS"/>
+                            </TabControl>
+
+                            <DataGrid x:Name="linear_plan_grid" Grid.Row="2" IsReadOnly="False"
+                                      SelectionMode="Extended" SelectionUnit="FullRow"
+                                      ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="BATCH" Binding="{Binding BatchId}" IsReadOnly="True" Width="68"/>
+                                    <DataGridTextColumn Header="TOTAL / DEPTH" Binding="{Binding TotalThicknessDisplay}" IsReadOnly="True" Width="105"/>
+                                    <DataGridTextColumn Header="PROPOSED ONE LINEAR COMPONENT" Binding="{Binding ComponentProposal}"
+                                                        IsReadOnly="True" Width="*" MinWidth="420"/>
+                                    <DataGridTextColumn Header="SPACES" Binding="{Binding SpaceCount}" IsReadOnly="True" Width="75"/>
+                                    <DataGridTextColumn Header="ROOM FACES" Binding="{Binding RoomFaceCount}" IsReadOnly="True" Width="92"/>
+                                    <DataGridTextColumn Header="LEVELS" Binding="{Binding Levels}" IsReadOnly="True" Width="105"/>
+                                    <DataGridTextColumn Header="ORIENTATIONS" Binding="{Binding Orientations}" IsReadOnly="True" Width="125"/>
+                                    <DataGridTemplateColumn Header="TARGET LINEAR U-VALUE" Width="165">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding TargetLinear, UpdateSourceTrigger=PropertyChanged}"
+                                                         Margin="4,2" ToolTip="Select/create this composite component in LINEAR Material Table, for example B501."/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="STATUS" IsReadOnly="True" Width="125">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <Ellipse Width="8" Height="8" Fill="{Binding StatusColor}" Margin="0,0,7,0"/>
+                                                    <TextBlock Text="{Binding Status}"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <Border Grid.Row="3" Background="#FFF8E8" BorderBrush="#F1D69A" BorderThickness="1" CornerRadius="5" Padding="12,8" Margin="0,8,0,8">
+                                <TextBlock x:Name="linear_find_replace_text"
+                                           Text="Select a batch to generate the LINEAR Find &amp; Replace instructions."
+                                           Foreground="#704D00" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                            </Border>
+
+                            <Border Grid.Row="4" Background="#F6F8FB" BorderBrush="{StaticResource Border}" BorderThickness="1,1,1,0" Padding="12,0">
+                                <Grid>
+                                    <TextBlock Text="EXPECTED LINEAR ROOM FACES FOR SELECTED BATCH" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="linear_face_count_text" Text="Select a component batch above"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource Blue}" FontWeight="Bold"/>
+                                </Grid>
+                            </Border>
+
+                            <DataGrid x:Name="linear_faces_grid" Grid.Row="5" IsReadOnly="True"
+                                      SelectionMode="Extended" SelectionUnit="FullRow"
+                                      ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="BATCH" Binding="{Binding BatchId}" Width="68"/>
+                                    <DataGridTextColumn Header="LEVEL" Binding="{Binding Level}" Width="80"/>
+                                    <DataGridTextColumn Header="SPACE NUMBER" Binding="{Binding SpaceNumber}" Width="125"/>
+                                    <DataGridTextColumn Header="SPACE NAME" Binding="{Binding SpaceName}" Width="*" MinWidth="220"/>
+                                    <DataGridTextColumn Header="ORIENTATION" Binding="{Binding Orientation}" Width="105"/>
+                                    <DataGridTextColumn Header="AREA m2" Binding="{Binding ExteriorAreaDisplay}" Width="80"/>
+                                    <DataGridTextColumn Header="DETECTED STRUCTURES" Binding="{Binding StructureCount}" Width="135"/>
+                                    <DataGridTextColumn Header="EXPECTED LINEAR ROW" Binding="{Binding ExpectedLinearRow}" Width="230"/>
+                                    <DataGridTemplateColumn Header="MATCH" Width="155">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <Ellipse Width="8" Height="8" Fill="{Binding StatusColor}" Margin="0,0,7,0"/>
+                                                    <TextBlock Text="{Binding MatchStatus}"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="ROOM WALL INVENTORY">
+                        <Grid Margin="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="80"/>
+                                <RowDefinition Height="170"/>
+                                <RowDefinition Height="38"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="38"/>
+                                <RowDefinition Height="145"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="#F3F7FC" BorderBrush="#D7E4F6" BorderThickness="1"
+                                    CornerRadius="6" Padding="14,9" Margin="0,0,0,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="235"/>
+                                        <ColumnDefinition Width="145"/>
+                                        <ColumnDefinition Width="190"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="ROOM WALL INVENTORY" FontWeight="Bold" Foreground="#17233A"/>
+                                        <TextBlock Text="Lists EWA/IWA walls, EWI/IWI windows and ED/ID doors. Material and LINEAR creation proposals are included here and in Excel. A black row means one wall is shared by two Spaces."
+                                                   TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
+                                        <TextBlock x:Name="room_wall_room_count_text" Text="0 rooms"
+                                                   Foreground="{StaticResource Blue}" FontWeight="Bold" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,10,0">
+                                        <TextBlock Text="ROOM FILTER" FontSize="10" FontWeight="Bold"
+                                                   Foreground="{StaticResource Blue}" Margin="2,0,0,4"/>
+                                        <ComboBox x:Name="room_wall_scope_combo" Height="30"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="0,0,10,0">
+                                        <TextBlock Text="LINEAR TYPE" FontSize="10" FontWeight="Bold"
+                                                   Foreground="{StaticResource Muted}" Margin="2,0,0,4"/>
+                                        <ComboBox x:Name="room_wall_type_combo" Height="30"/>
+                                    </StackPanel>
+                                    <Border Grid.Column="3" Background="#111111" CornerRadius="5" Padding="12,7"
+                                            VerticalAlignment="Center">
+                                        <CheckBox x:Name="black_shared_rows_checkbox" Content="BLACK SHARED ROWS"
+                                                  IsChecked="True" Foreground="White" FontWeight="SemiBold"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <DataGrid x:Name="room_wall_rooms_grid" Grid.Row="1" IsReadOnly="True"
+                                      SelectionMode="Single" SelectionUnit="FullRow"
+                                      ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="LEVEL" Binding="{Binding Level}" Width="72"/>
+                                    <DataGridTextColumn Header="SPACE NUMBER" Binding="{Binding SpaceNumber}" Width="120"/>
+                                    <DataGridTextColumn Header="SPACE NAME" Binding="{Binding SpaceName}" Width="*" MinWidth="260"/>
+                                    <DataGridTextColumn Header="HAS EWA" Binding="{Binding HasEwaDisplay}" Width="78"/>
+                                    <DataGridTextColumn Header="LINEAR TYPES" Binding="{Binding WallTypes}" Width="105"/>
+                                    <DataGridTextColumn Header="DETECTED SIDES" Binding="{Binding DetectedSideCount}" Width="110"/>
+                                    <DataGridTextColumn Header="EWA" Binding="{Binding EwaSideCount}" Width="58"/>
+                                    <DataGridTextColumn Header="IWA" Binding="{Binding IwaSideCount}" Width="58"/>
+                                    <DataGridTextColumn Header="OPENINGS" Binding="{Binding OpeningCount}" Width="72"/>
+                                    <DataGridTextColumn Header="SHARED" Binding="{Binding SharedSideCount}" Width="68"/>
+                                    <DataGridTextColumn Header="ASSEMBLIES" Binding="{Binding AssemblyCount}" Width="85"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <Border Grid.Row="2" Background="#F6F8FB" BorderBrush="{StaticResource Border}"
+                                    BorderThickness="1,1,1,0" Padding="12,0">
+                                <Grid>
+                                    <TextBlock Text="ROOM ENVELOPE COMPONENTS" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="room_wall_inventory_count_text" Text="Select a room above"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource Blue}" FontWeight="Bold"/>
+                                </Grid>
+                            </Border>
+
+                            <DataGrid x:Name="room_wall_inventory_grid" Grid.Row="3" IsReadOnly="True"
+                                      SelectionMode="Extended" SelectionUnit="FullRow"
+                                      ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
+                                <DataGrid.RowStyle>
+                                    <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding IsSharedWall}" Value="True"/>
+                                                    <Condition Binding="{Binding IsChecked, ElementName=black_shared_rows_checkbox}" Value="True"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Background" Value="#111111"/>
+                                                <Setter Property="Foreground" Value="White"/>
+                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                            </MultiDataTrigger>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding IsSharedWall}" Value="True"/>
+                                                    <Condition Binding="{Binding IsChecked, ElementName=black_shared_rows_checkbox}" Value="True"/>
+                                                    <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=IsSelected}" Value="True"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Background" Value="#111111"/>
+                                                <Setter Property="Foreground" Value="White"/>
+                                                <Setter Property="BorderBrush" Value="#4D8DFF"/>
+                                                <Setter Property="BorderThickness" Value="2"/>
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGrid.RowStyle>
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="TYPE" Binding="{Binding BoundaryCode}" Width="58"/>
+                                    <DataGridTextColumn Header="BOUNDARY" Binding="{Binding BoundaryCondition}" Width="170"/>
+                                    <DataGridTextColumn Header="ADJACENT SPACE" Binding="{Binding AdjacentSpace}" Width="205"/>
+                                    <DataGridTextColumn Header="ORIENT." Binding="{Binding Orientation}" Width="85"/>
+                                    <DataGridTextColumn Header="WALL THICKNESS" Binding="{Binding Thickness}" Width="110"/>
+                                    <DataGridTextColumn Header="LAYERS" Binding="{Binding LayerCount}" Width="58"/>
+                                    <DataGridTemplateColumn Header="COMPONENT / MATERIAL NAME" Width="*" MinWidth="280">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Materials}" TextTrimming="CharacterEllipsis"
+                                                           ToolTip="{Binding MaterialLayers}" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="MATERIAL CLASS" Binding="{Binding MaterialClasses}" Width="115"/>
+                                    <DataGridTextColumn Header="PROPOSED LINEAR MATERIAL / COMPONENT" Binding="{Binding LinearProposal}" Width="260"/>
+                                    <DataGridTextColumn Header="IFC CATEGORY" Binding="{Binding IfcCategory}" Width="115"/>
+                                    <DataGridTextColumn Header="AREA m2" Binding="{Binding Area}" Width="72"/>
+                                    <DataGridTextColumn Header="ELEMENTS" Binding="{Binding WallCount}" Width="68"/>
+                                    <DataGridTextColumn Header="SHARED" Binding="{Binding SharedWallDisplay}" Width="65"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <Border Grid.Row="4" Background="#F6F8FB" BorderBrush="{StaticResource Border}"
+                                    BorderThickness="1,1,1,0" Padding="12,0">
+                                <Grid>
+                                    <TextBlock x:Name="room_wall_layer_title" Text="SELECT A WALL ASSEMBLY ABOVE"
+                                               FontWeight="Bold" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
+
+                            <DataGrid x:Name="room_wall_layers_grid" Grid.Row="5" IsReadOnly="True"
+                                      SelectionMode="Single" SelectionUnit="FullRow">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="ORDER" Binding="{Binding Rank}" Width="72"/>
+                                    <DataGridTextColumn Header="LAYER WIDTH" Binding="{Binding ThicknessDisplay}" Width="120"/>
+                                    <DataGridTextColumn Header="ELEMENT ID" Binding="{Binding SourceElementId}" Width="105"/>
+                                    <DataGridTemplateColumn Header="LOCATE" Width="92">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button Content="⌖  FOCUS" Height="28" Padding="9,0"
+                                                        Tag="{Binding}" ToolTip="Focus this exact linked layer element in Revit."/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="COMPONENT / MATERIAL NAME" Binding="{Binding Name}" Width="*" MinWidth="350"/>
+                                    <DataGridTextColumn Header="MATERIAL CLASS" Binding="{Binding MaterialClass}" Width="140"/>
+                                    <DataGridTextColumn Header="PROPOSED LINEAR MATERIAL" Binding="{Binding LinearMaterialProposal}" Width="300"/>
+                                    <DataGridTextColumn Header="FACE" Binding="{Binding BranchDisplay}" Width="300"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="WALL TYPE GROUPS">
+                        <Grid Margin="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="70"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="38"/>
+                                <RowDefinition Height="220"/>
+                            </Grid.RowDefinitions>
+                            <Border Background="#F3F7FC" BorderBrush="#D7E4F6" BorderThickness="1"
+                                    CornerRadius="6" Padding="14,9" Margin="0,0,0,8">
+                                <Grid>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="MATCHING WALL MATERIAL + THICKNESS" FontWeight="Bold" Foreground="#17233A"/>
+                                        <TextBlock Text="Groups EWA/IWA walls by identical layer material sequence and measured thickness. Openings are associated by Space, orientation and overlapping linked geometry."
+                                                   TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="wall_type_group_count_text" Text="0 wall groups"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource Blue}" FontWeight="Bold"/>
+                                </Grid>
+                            </Border>
+                            <DataGrid x:Name="wall_type_groups_grid" Grid.Row="1" IsReadOnly="True"
+                                      SelectionMode="Single" SelectionUnit="FullRow"
+                                      ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="GROUP" Binding="{Binding GroupId}" Width="75"/>
+                                    <DataGridTextColumn Header="TYPE" Binding="{Binding LinearCategory}" Width="58"/>
+                                    <DataGridTextColumn Header="THICKNESS" Binding="{Binding Thickness}" Width="95"/>
+                                    <DataGridTextColumn Header="LAYERS" Binding="{Binding LayerCount}" Width="58"/>
+                                    <DataGridTextColumn Header="COMPONENT / MATERIAL" Binding="{Binding Materials}" Width="*" MinWidth="270"/>
+                                    <DataGridTextColumn Header="MATERIAL CLASS" Binding="{Binding MaterialClasses}" Width="130"/>
+                                    <DataGridTextColumn Header="ROOMS" Binding="{Binding RoomCount}" Width="65"/>
+                                    <DataGridTextColumn Header="OCCURRENCES" Binding="{Binding WallOccurrenceCount}" Width="90"/>
+                                    <DataGridTextColumn Header="WALL ELEMENTS" Binding="{Binding WallElementCount}" Width="95"/>
+                                    <DataGridTextColumn Header="AREA m2" Binding="{Binding Area}" Width="75"/>
+                                    <DataGridTextColumn Header="OPENINGS" Binding="{Binding OpeningCount}" Width="72"/>
+                                    <DataGridTextColumn Header="OPENING TYPES" Binding="{Binding OpeningTypes}" Width="115"/>
+                                    <DataGridTextColumn Header="LINEAR MATERIAL PROPOSAL" Binding="{Binding LinearMaterialProposal}" Width="300"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <Border Grid.Row="2" Background="#F6F8FB" BorderBrush="{StaticResource Border}"
+                                    BorderThickness="1,1,1,0" Padding="12,0">
+                                <Grid>
+                                    <TextBlock Text="SPACES AND ASSOCIATED OPENINGS" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="wall_type_occurrence_count_text" Text="Select a wall group above"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource Blue}" FontWeight="Bold"/>
+                                </Grid>
+                            </Border>
+                            <DataGrid x:Name="wall_type_occurrences_grid" Grid.Row="3" IsReadOnly="True"
+                                      SelectionMode="Extended" SelectionUnit="FullRow">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="LEVEL" Binding="{Binding Level}" Width="80"/>
+                                    <DataGridTextColumn Header="SPACE NUMBER" Binding="{Binding SpaceNumber}" Width="125"/>
+                                    <DataGridTextColumn Header="ROOM NAME" Binding="{Binding RoomName}" Width="*" MinWidth="220"/>
+                                    <DataGridTextColumn Header="ORIENTATION" Binding="{Binding Orientation}" Width="105"/>
+                                    <DataGridTextColumn Header="TYPE" Binding="{Binding WallType}" Width="58"/>
+                                    <DataGridTextColumn Header="THICKNESS" Binding="{Binding Thickness}" Width="95"/>
+                                    <DataGridTextColumn Header="AREA m2" Binding="{Binding Area}" Width="75"/>
+                                    <DataGridTextColumn Header="WALL ELEMENTS" Binding="{Binding WallElements}" Width="95"/>
+                                    <DataGridTextColumn Header="OPENING COUNT" Binding="{Binding OpeningCount}" Width="95"/>
+                                    <DataGridTextColumn Header="OPENING TYPES" Binding="{Binding OpeningTypes}" Width="105"/>
+                                    <DataGridTextColumn Header="OPENINGS IN SAME SPACE + ORIENTATION" Binding="{Binding OpeningsInSameSpaceAndOrientation}" Width="420"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </TabItem>
+                </TabControl>
+            </Grid>
+        </Grid>
+
+        <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+            <Grid Margin="14,0"><TextBlock x:Name="status_text" Text="Ready. Scan exterior walls to begin." VerticalAlignment="Center" Foreground="{StaticResource Muted}"/><TextBlock x:Name="row_count_text" Text="0 rows" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/></Grid>
+        </Border>
+    </Grid>
+</Window>

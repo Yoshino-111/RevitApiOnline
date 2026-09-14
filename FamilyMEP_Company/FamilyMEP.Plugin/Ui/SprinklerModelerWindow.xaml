@@ -1,0 +1,1736 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="FamilyMEP - Spinkler"
+        Height="900"
+        Width="1500"
+        MinHeight="780"
+        MinWidth="1280"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResizeWithGrip"
+        Background="#F5F7F8">
+    <Window.Resources>
+        <SolidColorBrush x:Key="PageBrush" Color="#F5F7F8" />
+        <SolidColorBrush x:Key="CardBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="InkBrush" Color="#172536" />
+        <SolidColorBrush x:Key="SoftBrush" Color="#647383" />
+        <SolidColorBrush x:Key="BorderBrush" Color="#D8E0E6" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#0AA6A6" />
+        <SolidColorBrush x:Key="AccentSoftBrush" Color="#E5F8F7" />
+        <SolidColorBrush x:Key="CoralBrush" Color="#EF6A5B" />
+        <SolidColorBrush x:Key="VioletBrush" Color="#7657D5" />
+        <SolidColorBrush x:Key="AmberBrush" Color="#F5B83D" />
+        <SolidColorBrush x:Key="GreenBrush" Color="#39A96B" />
+        <SolidColorBrush x:Key="RedBrush" Color="#D94B4B" />
+
+        <DropShadowEffect x:Key="CardShadow" BlurRadius="12" ShadowDepth="1" Opacity="0.08" />
+
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+        </Style>
+
+        <Style TargetType="Button">
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+            <Setter Property="Background" Value="#EEF2F4" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="16,9" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#E3EBEF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.78" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.42" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="#078C8C" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Padding" Value="20,10" />
+        </Style>
+
+        <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#FFF4F3" />
+            <Setter Property="BorderBrush" Value="#F2C0BB" />
+            <Setter Property="Foreground" Value="#B63A30" />
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="Height" Value="36" />
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Height" Value="36" />
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style TargetType="DataGrid">
+            <Setter Property="AutoGenerateColumns" Value="False" />
+            <Setter Property="CanUserAddRows" Value="False" />
+            <Setter Property="CanUserDeleteRows" Value="False" />
+            <Setter Property="CanUserResizeRows" Value="False" />
+            <Setter Property="HeadersVisibility" Value="Column" />
+            <Setter Property="RowHeaderWidth" Value="0" />
+            <Setter Property="GridLinesVisibility" Value="Horizontal" />
+            <Setter Property="HorizontalGridLinesBrush" Value="#E7ECEF" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="AlternatingRowBackground" Value="#FAFBFC" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="RowHeight" Value="46" />
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#EEF3F5" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="10,9" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+        </Style>
+
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource SoftBrush}" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,24,0" />
+            <Setter Property="Padding" Value="18,10,18,12" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0,0,0,2" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="TabBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="TabBorder" Property="Background" Value="#F4FBFB" />
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                <Setter Property="Foreground" Value="#078C8C" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource SoftBrush}" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="17" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        </Style>
+
+        <Style x:Key="CompactToolButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="MinWidth" Value="34" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="9,0" />
+            <Setter Property="Background" Value="White" />
+        </Style>
+
+        <Style x:Key="InspectorToolButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Height" Value="48" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="FontWeight" Value="Normal" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="76" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="62" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <Grid Margin="22,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Grid Width="54" Height="54" VerticalAlignment="Center">
+                    <Border Background="#E5F8F7" CornerRadius="14" />
+                    <Canvas Width="42" Height="42" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Data="M 5,11 L 22,11 L 22,29 L 35,29" />
+                        <Ellipse Width="8" Height="8" Fill="{StaticResource CoralBrush}" Canvas.Left="1" Canvas.Top="7">
+                            <Ellipse.Triggers>
+                                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(Canvas.Left)" Duration="0:0:2.4">
+                                                <LinearDoubleKeyFrame KeyTime="0:0:0" Value="1" />
+                                                <LinearDoubleKeyFrame KeyTime="0:0:1.2" Value="18" />
+                                                <LinearDoubleKeyFrame KeyTime="0:0:2.4" Value="31" />
+                                            </DoubleAnimationUsingKeyFrames>
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(Canvas.Top)" Duration="0:0:2.4">
+                                                <LinearDoubleKeyFrame KeyTime="0:0:0" Value="7" />
+                                                <LinearDoubleKeyFrame KeyTime="0:0:1.2" Value="7" />
+                                                <LinearDoubleKeyFrame KeyTime="0:0:2.4" Value="25" />
+                                            </DoubleAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Ellipse.Triggers>
+                        </Ellipse>
+                        <Ellipse Width="8" Height="8" Fill="{StaticResource VioletBrush}" Canvas.Left="31" Canvas.Top="25">
+                            <Ellipse.Triggers>
+                                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.35" To="1" Duration="0:0:0.7" />
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" From="0.75" To="1.15" Duration="0:0:0.7" />
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" From="0.75" To="1.15" Duration="0:0:0.7" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Ellipse.Triggers>
+                            <Ellipse.RenderTransform>
+                                <ScaleTransform CenterX="4" CenterY="4" />
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
+                    </Canvas>
+                </Grid>
+
+                <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Spinkler" FontSize="24" FontWeight="Bold" />
+                        <Border Margin="12,2,0,0" Padding="8,3" Background="#E9F6EC" BorderBrush="#BFE3C9" BorderThickness="1" CornerRadius="10">
+                            <TextBlock Text="C# MODELESS" Foreground="#23834B" FontSize="10" FontWeight="Bold" />
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Text="CAD Modeler  /  PDF &amp; DWG to native Revit systems"
+                               Margin="0,3,0,0" FontSize="12" Foreground="{StaticResource SoftBrush}" />
+                </StackPanel>
+
+                <Border Grid.Column="2" Background="#F5F7F8" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="14,9" VerticalAlignment="Center">
+                    <StackPanel>
+                        <TextBlock Text="ACTIVE MODEL" FontSize="10" FontWeight="Bold" Foreground="{StaticResource SoftBrush}" />
+                        <TextBlock x:Name="doc_name_text" Text="Active Model" Margin="0,2,0,0" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1" Background="#FBFCFD" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="20,10">
+            <DockPanel>
+                <TextBlock x:Name="step_text" Text="Step 1 of 5  /  Source" Foreground="{StaticResource SoftBrush}" VerticalAlignment="Center" DockPanel.Dock="Right" />
+                <TextBlock Text="Unified workflow: import, classify, connect, size, validate" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </DockPanel>
+        </Border>
+
+        <TabControl x:Name="main_tabs" Grid.Row="2" Margin="18,12,18,10">
+            <TabItem Header="01   SOURCE">
+                <Grid>
+                    <Grid Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3.15*" />
+                            <ColumnDefinition Width="1*" MinWidth="270" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="6" Margin="0,0,10,0" ClipToBounds="True">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="54" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="42" />
+                                </Grid.RowDefinitions>
+
+                                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Background="#FBFCFD">
+                                    <Grid Margin="12,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="82" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="1" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <ComboBox x:Name="v2_source_format_combo" Height="34" Margin="0,0,8,0" />
+                                        <TextBox x:Name="v2_source_file_tb" Grid.Column="1" Height="34" IsReadOnly="True"
+                                                 VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                            <Button x:Name="v2_browse_source_btn" Content="Browse" Style="{StaticResource CompactToolButtonStyle}" />
+                                            <Button x:Name="v2_replace_source_btn" Content="Replace" Margin="6,0,0,0"
+                                                    Style="{StaticResource CompactToolButtonStyle}" />
+                                        </StackPanel>
+                                        <Border Grid.Column="3" Background="{StaticResource BorderBrush}" Margin="12,0" />
+                                        <StackPanel Grid.Column="4" Orientation="Horizontal">
+                                            <TextBlock Text="Page" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{StaticResource SoftBrush}" />
+                                            <Border Width="42" Height="34" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Background="White">
+                                                <TextBlock Text="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <TextBlock Text="/ 1" VerticalAlignment="Center" Margin="7,0,12,0" />
+                                            <Button x:Name="v2_source_zoom_out_btn" Content="−" Style="{StaticResource CompactToolButtonStyle}" ToolTip="Zoom out" />
+                                            <Border Width="64" Height="34" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,1,0,1" Background="White">
+                                                <TextBlock x:Name="v2_source_zoom_text" Text="100%" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                            </Border>
+                                            <Button x:Name="v2_source_zoom_in_btn" Content="+" Style="{StaticResource CompactToolButtonStyle}" ToolTip="Zoom in" />
+                                            <Button x:Name="v2_source_fit_btn" Content="Fit" Margin="6,0,0,0" Style="{StaticResource CompactToolButtonStyle}" />
+                                            <Button x:Name="v2_source_pan_btn" Content="✋" Margin="6,0,0,0" Style="{StaticResource CompactToolButtonStyle}" ToolTip="Pan with mouse" />
+                                            <Button x:Name="v2_source_rotate_btn" Content="↻" Margin="6,0,0,0" Style="{StaticResource CompactToolButtonStyle}" ToolTip="Rotate page" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <Grid x:Name="v2_source_pdf_host" Grid.Row="1" Background="#DCE1E4" ClipToBounds="True">
+                                    <ScrollViewer x:Name="v2_source_pdf_scroll" Visibility="Collapsed"
+                                                  HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                                  Padding="22" Background="#DCE1E4" Panel.ZIndex="2">
+                                        <Image x:Name="v2_source_pdf_image" Stretch="Fill"
+                                               HorizontalAlignment="Left" VerticalAlignment="Top"
+                                               SnapsToDevicePixels="True"
+                                               RenderOptions.BitmapScalingMode="HighQuality" />
+                                    </ScrollViewer>
+                                    <Border x:Name="v2_source_pdf_placeholder" Panel.ZIndex="1"
+                                            Margin="36,24" Background="White" BorderBrush="#B9C4CB" BorderThickness="1">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock x:Name="v2_source_placeholder_title" Text="PDF" FontSize="24" FontWeight="Bold" Foreground="{StaticResource CoralBrush}" HorizontalAlignment="Center" />
+                                            <TextBlock x:Name="v2_source_placeholder_hint" Text="Select a real PDF to preview" Margin="0,8,0,0" Foreground="{StaticResource SoftBrush}" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <Grid Grid.Row="2" Margin="12,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ProgressBar x:Name="v2_scan_progress" Height="5" Minimum="0" Maximum="100" Value="0"
+                                                 Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                    <TextBlock Grid.Column="1" Text="Wheel zoom  •  Middle-drag pan" VerticalAlignment="Center"
+                                               Foreground="{StaticResource SoftBrush}" FontSize="11" />
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="1" Background="White" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="6">
+                            <Grid Margin="16">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <DockPanel>
+                                    <Border DockPanel.Dock="Right" Background="{StaticResource AccentSoftBrush}" Padding="7,3" CornerRadius="4">
+                                        <TextBlock x:Name="v2_source_quality_badge" Text="NATIVE PDF" FontSize="9" FontWeight="Bold" Foreground="#078C8C" />
+                                    </Border>
+                                    <TextBlock Text="IMPORT SETUP" FontSize="13" FontWeight="Bold" />
+                                </DockPanel>
+                                <StackPanel Grid.Row="1" Margin="0,20,0,0">
+                                    <TextBlock Text="Target view" Style="{StaticResource LabelStyle}" />
+                                    <ComboBox x:Name="v2_target_view_combo" />
+                                    <Button x:Name="v2_place_pdf_in_revit_btn" Margin="0,8,0,0"
+                                            Content="1  Place / select PDF in Revit" />
+                                    <Button x:Name="v2_use_aligned_pdf_btn" Margin="0,5,0,0"
+                                            Content="2  Use aligned PDF position" />
+                                    <TextBlock x:Name="v2_placement_area_status_text" Margin="0,5,0,0"
+                                               Text="PDF position not captured" TextWrapping="Wrap"
+                                               Foreground="#C98200" FontSize="10.5" />
+                                    <TextBlock Text="Target level" Style="{StaticResource LabelStyle}" />
+                                    <ComboBox x:Name="v2_link_level_combo" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="2" Margin="0,14,0,0">
+                                    <TextBlock Text="Sprinkler family / type" Style="{StaticResource LabelStyle}" />
+                                    <ComboBox x:Name="v2_sprinkler_family_combo" />
+                                    <TextBlock Text="Elevation reference" Style="{StaticResource LabelStyle}" Margin="0,10,0,0" />
+                                    <ComboBox x:Name="v2_sprinkler_reference_mode_combo" />
+                                    <StackPanel x:Name="v2_sprinkler_reference_target_panel" Visibility="Collapsed">
+                                        <TextBlock x:Name="v2_sprinkler_reference_target_label" Text="Reference target"
+                                                   Style="{StaticResource LabelStyle}" Margin="0,8,0,0" />
+                                        <ComboBox x:Name="v2_sprinkler_reference_target_combo" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="v2_sprinkler_elevation_label" Text="Offset above selected Level / floor"
+                                               Style="{StaticResource LabelStyle}" Margin="0,8,0,0" />
+                                    <TextBox x:Name="v2_sprinkler_elevation_tb" Text="2700" />
+                                    <TextBlock x:Name="v2_sprinkler_elevation_hint"
+                                               Text="Final elevation = selected Level + offset"
+                                               Margin="0,4,0,0" TextWrapping="Wrap"
+                                               Foreground="{StaticResource SoftBrush}" FontSize="10" />
+                                </StackPanel>
+                                <Grid Grid.Row="3" Margin="0,14,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,5,0">
+                                        <TextBlock Text="System" Style="{StaticResource LabelStyle}" />
+                                        <ComboBox x:Name="v2_system_type_combo" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                                        <TextBlock Text="Units" Style="{StaticResource LabelStyle}" />
+                                        <ComboBox x:Name="v2_units_combo" />
+                                    </StackPanel>
+                                </Grid>
+                                <StackPanel x:Name="v2_cad_units_panel" Grid.Row="3" Margin="0,66,0,0"
+                                            Visibility="Collapsed">
+                                    <TextBlock Text="DWG drawing units" Style="{StaticResource LabelStyle}" />
+                                    <ComboBox x:Name="v2_cad_units_combo" />
+                                    <TextBlock Text="Scale correction" Style="{StaticResource LabelStyle}" Margin="0,8,0,0" />
+                                    <TextBox x:Name="v2_cad_scale_factor_tb" Text="1.0" />
+                                    <TextBlock Text="Controls CAD scale only; elevation still uses Input units above."
+                                               Margin="0,4,0,0" TextWrapping="Wrap"
+                                               Foreground="{StaticResource SoftBrush}" FontSize="10" />
+                                    <TextBlock Text="Correction = required distance / measured distance. Example: 8 / 1.2 = 6.6667."
+                                               Margin="0,2,0,0" TextWrapping="Wrap"
+                                               Foreground="#C98200" FontSize="10" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="4" Margin="0,28,0,0">
+                                    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="0,18,0,0">
+                                        <StackPanel>
+                                            <TextBlock Text="DOCUMENT" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SoftBrush}" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                                <TextBlock Text="▧" FontSize="18" Foreground="{StaticResource CoralBrush}" Margin="0,0,9,0" />
+                                                <TextBlock x:Name="v2_source_document_name" Text="Level_02_FP.pdf" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <TextBlock x:Name="v2_source_document_meta" Text="1 page" Margin="0,12,0,0" />
+                                            <TextBlock Text="●  Vector content detected" Margin="0,14,0,0" Foreground="{StaticResource GreenBrush}" />
+                                            <TextBlock Text="▲  Scale requires confirmation" Margin="0,12,0,0" Foreground="#C98200" />
+                                            <TextBlock x:Name="v2_source_quality_text" Text="Ready to analyze"
+                                                       Margin="0,16,0,0" TextWrapping="Wrap" Foreground="{StaticResource SoftBrush}" FontSize="12" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+
+                                <Button x:Name="v2_scan_source_btn" Grid.Row="5" Content="Analyze Source"
+                                        Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Stretch" Margin="0,18,0,0" />
+                                <StackPanel Visibility="Collapsed">
+                                    <TextBlock x:Name="v2_vector_count_text" Text="547" />
+                                    <TextBlock x:Name="v2_symbol_count_text" Text="94" />
+                                    <TextBlock x:Name="v2_unclassified_count_text" Text="21" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                <Grid Margin="0,12,0,0" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2.25*" />
+                        <ColumnDefinition Width="0.95*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Effect="{StaticResource CardShadow}" Margin="0,0,12,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Margin="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="source_format_combo" Grid.Column="0" Margin="0,0,10,0" />
+                                <TextBox x:Name="source_file_tb" Grid.Column="1" Margin="0,0,10,0" />
+                                <Button x:Name="browse_source_btn" Grid.Column="2" Content="Browse source" />
+                            </Grid>
+
+                            <Border Grid.Row="1" Margin="16,0" Background="#FCFDFD" BorderBrush="#E1E7EB" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                                <Grid>
+                                    <Canvas Background="#FCFDFD">
+                                        <Line X1="70" Y1="80" X2="890" Y2="80" Stroke="#CBD3D9" StrokeThickness="1" />
+                                        <Line X1="70" Y1="180" X2="890" Y2="180" Stroke="#CBD3D9" StrokeThickness="1" />
+                                        <Line X1="70" Y1="280" X2="890" Y2="280" Stroke="#CBD3D9" StrokeThickness="1" />
+                                        <Line X1="70" Y1="380" X2="890" Y2="380" Stroke="#CBD3D9" StrokeThickness="1" />
+                                        <Line X1="110" Y1="45" X2="110" Y2="450" Stroke="#D8DEE3" StrokeDashArray="4 3" />
+                                        <Line X1="300" Y1="45" X2="300" Y2="450" Stroke="#D8DEE3" StrokeDashArray="4 3" />
+                                        <Line X1="500" Y1="45" X2="500" Y2="450" Stroke="#D8DEE3" StrokeDashArray="4 3" />
+                                        <Line X1="700" Y1="45" X2="700" Y2="450" Stroke="#D8DEE3" StrokeDashArray="4 3" />
+                                        <Rectangle Canvas.Left="100" Canvas.Top="70" Width="650" Height="300" Stroke="#AEB8C0" StrokeThickness="2" />
+                                        <Rectangle Canvas.Left="120" Canvas.Top="90" Width="170" Height="80" Stroke="#C5CDD3" />
+                                        <Rectangle Canvas.Left="310" Canvas.Top="90" Width="180" Height="80" Stroke="#C5CDD3" />
+                                        <Rectangle Canvas.Left="510" Canvas.Top="90" Width="220" Height="80" Stroke="#C5CDD3" />
+                                        <Rectangle Canvas.Left="120" Canvas.Top="190" Width="250" Height="160" Stroke="#C5CDD3" />
+                                        <Rectangle Canvas.Left="390" Canvas.Top="190" Width="150" Height="160" Stroke="#C5CDD3" />
+                                        <Rectangle Canvas.Left="560" Canvas.Top="190" Width="170" Height="160" Stroke="#C5CDD3" />
+
+                                        <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="7" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M 135,260 L 710,260 M 260,260 L 260,120 M 500,260 L 500,120" />
+                                        <Path Stroke="{StaticResource CoralBrush}" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M 260,120 L 190,120 L 190,150 M 260,120 L 350,120 L 350,150 M 500,120 L 580,120 L 580,150 M 500,260 L 440,260 L 440,320 M 500,260 L 630,260 L 630,320" />
+
+                                        <Ellipse Canvas.Left="181" Canvas.Top="142" Width="18" Height="18" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" />
+                                        <Ellipse Canvas.Left="341" Canvas.Top="142" Width="18" Height="18" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" />
+                                        <Ellipse Canvas.Left="571" Canvas.Top="142" Width="18" Height="18" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" />
+                                        <Ellipse Canvas.Left="431" Canvas.Top="312" Width="18" Height="18" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" />
+                                        <Ellipse Canvas.Left="621" Canvas.Top="312" Width="18" Height="18" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" />
+                                        <Path Stroke="{StaticResource AmberBrush}" StrokeThickness="3" StrokeDashArray="7 4" Data="M 735,110 C 790,110 800,170 760,195 C 725,215 735,255 790,255" />
+                                    </Canvas>
+                                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14" Padding="9,5" Background="#FFFFFFEE" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Ellipse Width="8" Height="8" Fill="{StaticResource AccentBrush}" Margin="0,0,6,0" />
+                                            <TextBlock Text="Vector preview" FontSize="12" FontWeight="SemiBold" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <Grid Grid.Row="2" Margin="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ProgressBar x:Name="scan_progress" Height="8" Minimum="0" Maximum="100" Value="0" Margin="0,0,16,0" VerticalAlignment="Center" Foreground="{StaticResource AccentBrush}" />
+                                <Button x:Name="scan_source_btn" Grid.Column="1" Content="Analyze source" Style="{StaticResource PrimaryButtonStyle}" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Grid.Column="1">
+                        <Border Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16" Effect="{StaticResource CardShadow}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <DockPanel>
+                                    <Border DockPanel.Dock="Right" Background="{StaticResource AccentSoftBrush}" BorderThickness="0" CornerRadius="10" Padding="8,4">
+                                        <TextBlock x:Name="source_quality_badge" Text="VECTOR 92%" FontSize="10" FontWeight="Bold" Foreground="#078C8C" />
+                                    </Border>
+                                    <TextBlock Text="Source setup" Style="{StaticResource SectionTitleStyle}" />
+                                </DockPanel>
+                                <StackPanel Grid.Row="1" Margin="0,16,0,0">
+                                    <TextBlock Text="Target level" Style="{StaticResource LabelStyle}" />
+                                    <ComboBox x:Name="link_level_combo" />
+                                </StackPanel>
+                                <Grid Grid.Row="2" Margin="0,14,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,6,0">
+                                        <TextBlock Text="System" Style="{StaticResource LabelStyle}" />
+                                        <ComboBox x:Name="system_type_combo" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                                        <TextBlock Text="Units" Style="{StaticResource LabelStyle}" />
+                                        <ComboBox x:Name="units_combo" />
+                                    </StackPanel>
+                                </Grid>
+                                <Border Grid.Row="3" Margin="0,16,0,0" Background="#F6F9FA" BorderBrush="#E1E7EB" BorderThickness="1" CornerRadius="8" Padding="12">
+                                    <StackPanel>
+                                        <TextBlock Text="Detection note" FontWeight="SemiBold" />
+                                        <TextBlock x:Name="source_quality_text" Margin="0,5,0,0" Text="Vector source detected - original layers partially preserved" TextWrapping="Wrap" Foreground="{StaticResource SoftBrush}" FontSize="12" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <Border Margin="0,12,0,0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16" Effect="{StaticResource CardShadow}">
+                            <StackPanel>
+                                <TextBlock Text="Detected geometry" Style="{StaticResource SectionTitleStyle}" />
+                                <Grid Margin="0,14,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock x:Name="vector_count_text" Text="547" FontSize="22" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                                        <TextBlock Text="Primitives" FontSize="11" Foreground="{StaticResource SoftBrush}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock x:Name="symbol_count_text" Text="94" FontSize="22" FontWeight="Bold" Foreground="{StaticResource VioletBrush}" />
+                                        <TextBlock Text="Symbols" FontSize="11" Foreground="{StaticResource SoftBrush}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock x:Name="unclassified_count_text" Text="21" FontSize="22" FontWeight="Bold" Foreground="#D48A00" />
+                                        <TextBlock Text="Unclassified" FontSize="11" Foreground="{StaticResource SoftBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="02   LAYERS">
+                <TabItem.Resources>
+                    <Style x:Key="MarkerButtonStyle" TargetType="Button">
+                        <Setter Property="Width" Value="34" />
+                        <Setter Property="Height" Value="34" />
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Foreground" Value="White" />
+                        <Setter Property="FontWeight" Value="Bold" />
+                        <Setter Property="FontSize" Value="14" />
+                        <Setter Property="BorderBrush" Value="White" />
+                        <Setter Property="BorderThickness" Value="3" />
+                        <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="{x:Type Button}">
+                                    <Border x:Name="marker_border"
+                                            Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="18">
+                                        <Grid>
+                                            <Ellipse Margin="2" Stroke="#35FFFFFF" StrokeThickness="1" />
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="marker_border" Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <ScaleTransform ScaleX="1.10" ScaleY="1.10" />
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Setter TargetName="marker_border" Property="RenderTransformOrigin" Value="0.5,0.5" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </TabItem.Resources>
+
+                <Grid>
+                    <Grid Margin="0,10,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="42" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Border Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="5">
+                            <Grid Margin="12,0">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Ellipse Width="8" Height="8" Fill="{StaticResource GreenBrush}" Margin="0,0,7,0" />
+                                    <TextBlock x:Name="v2_layer_classified_text" Text="0 user-confirmed" VerticalAlignment="Center" />
+                                    <Ellipse Width="8" Height="8" Fill="{StaticResource AmberBrush}" Margin="24,0,7,0" />
+                                    <TextBlock x:Name="v2_layer_review_text" Text="3 seed types needed" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <Button x:Name="v2_clear_all_classifications_btn" Content="Clear all classifications"
+                                            Height="30" Padding="12,0" Margin="0,0,8,0" />
+                                    <Button x:Name="v2_auto_map_btn" Content="Run Auto Map" Height="30" Padding="14,0"
+                                            Style="{StaticResource PrimaryButtonStyle}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Grid Grid.Row="1" Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="300" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="310" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="5" Margin="0,0,8,0" ClipToBounds="True">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="52" />
+                                        <RowDefinition Height="54" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <Grid Margin="14,0">
+                                        <TextBlock Text="ANALYZED LAYERS" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" />
+                                        <TextBlock Text="6 groups" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource SoftBrush}" FontSize="11" />
+                                    </Grid>
+                                    <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,1" Padding="12,9">
+                                        <Grid>
+                                            <TextBox x:Name="v2_layer_filter_tb" Height="34" Padding="30,6,8,6" />
+                                            <TextBlock Text="⌕" FontSize="19" Foreground="{StaticResource SoftBrush}"
+                                                       HorizontalAlignment="Left" VerticalAlignment="Center" Margin="9,0,0,0"
+                                                       IsHitTestVisible="False" />
+                                            <TextBlock Text="Filter layers..." Foreground="#9AA6AF" VerticalAlignment="Center" Margin="31,0,0,0"
+                                                       IsHitTestVisible="False">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Text, ElementName=v2_layer_filter_tb}" Value="">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                    </Border>
+
+                                    <DataGrid x:Name="v2_layer_grid" Grid.Row="2" BorderThickness="0" Margin="0"
+                                              SelectionMode="Single" SelectionUnit="FullRow" RowHeight="64"
+                                              ColumnHeaderHeight="34" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <DataGrid.Columns>
+                                            <DataGridTemplateColumn Header="#" Width="48">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <Border Width="28" Height="28" CornerRadius="14" Background="{Binding ColorHex}"
+                                                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding Marker}" Foreground="White" FontWeight="Bold"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                            <DataGridTemplateColumn Header="PDF / CAD group" Width="*">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding CadLayer}" FontWeight="SemiBold" />
+                                                            <TextBlock Text="{Binding RevitCategory}" FontSize="11" Foreground="{StaticResource SoftBrush}" Margin="0,3,0,0" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                            <DataGridTextColumn Header="Items" Binding="{Binding Detected}" Width="48" />
+                                            <DataGridTextColumn Header="Match" Binding="{Binding Confidence}" Width="52" />
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Column="1" Background="White" BorderBrush="{StaticResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="5" Margin="0,0,8,0" ClipToBounds="True">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="52" />
+                                        <RowDefinition Height="*" />
+                                        <RowDefinition Height="38" />
+                                    </Grid.RowDefinitions>
+                                    <Grid Margin="10,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="▧" FontSize="16" Foreground="{StaticResource CoralBrush}" Margin="0,0,7,0" />
+                                            <TextBlock x:Name="v2_pdf_file_name_text" Text="Level_02_FP.pdf" FontWeight="SemiBold" />
+                                            <TextBlock x:Name="v2_pdf_document_meta_text" Text="  •  Page 1 / 1" Margin="5,0,0,0"
+                                                       Foreground="{StaticResource SoftBrush}" FontSize="11" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <Button x:Name="v2_pdf_zoom_out_btn" Content="−" Style="{StaticResource CompactToolButtonStyle}" />
+                                            <Border Width="58" Height="34" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,1,0,1" Background="White">
+                                                <TextBlock x:Name="v2_pdf_zoom_text" Text="100%" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                            </Border>
+                                            <Button x:Name="v2_pdf_zoom_in_btn" Content="+" Style="{StaticResource CompactToolButtonStyle}" />
+                                            <Button x:Name="v2_pdf_fit_btn" Content="Fit" Margin="5,0,0,0" Style="{StaticResource CompactToolButtonStyle}" />
+                                            <Button x:Name="v2_pdf_pan_btn" Content="✋" Margin="5,0,0,0" Style="{StaticResource CompactToolButtonStyle}" ToolTip="Pan with mouse" />
+                                            <CheckBox x:Name="v2_show_overlay_cb" Content="Numbered overlay" IsChecked="True"
+                                                      Margin="10,0,0,0" VerticalAlignment="Center" />
+                                            <CheckBox x:Name="v2_thin_markup_cb" Content="Thin lines" IsChecked="True"
+                                                      Margin="10,0,0,0" VerticalAlignment="Center"
+                                                      ToolTip="Keep classification markup thin and readable at every zoom level" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Grid x:Name="v2_layer_pdf_host" Grid.Row="1" Background="#DCE1E4" ClipToBounds="True">
+                                        <ScrollViewer x:Name="v2_layer_pdf_scroll" Visibility="Collapsed"
+                                                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Visible"
+                                                      CanContentScroll="False" PanningMode="Both"
+                                                      Padding="18" Background="#DCE1E4" Panel.ZIndex="2">
+                                            <Image x:Name="v2_layer_pdf_image" Stretch="Fill"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                   SnapsToDevicePixels="True"
+                                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                                        </ScrollViewer>
+                                        <Viewbox x:Name="v2_pdf_placeholder_view" Stretch="Uniform" Panel.ZIndex="1">
+                                            <Canvas Width="1000" Height="650" Background="#F4F6F7">
+                                                <Border Canvas.Left="45" Canvas.Top="30" Width="910" Height="590"
+                                                        Background="White" BorderBrush="#B9C4CB" BorderThickness="1" />
+                                                <TextBlock Canvas.Left="390" Canvas.Top="300" Text="Select a real PDF in Source"
+                                                           Foreground="{StaticResource SoftBrush}" FontSize="18" />
+                                            </Canvas>
+                                        </Viewbox>
+                                        <Viewbox x:Name="v2_pdf_overlay_view" Stretch="Fill" Panel.ZIndex="10" IsHitTestVisible="True"
+                                                 HorizontalAlignment="Left" VerticalAlignment="Top" Margin="18">
+                                            <Canvas x:Name="v2_pdf_overlay_canvas" Width="1000" Height="650">
+                                                <Image x:Name="v2_analysis_overlay_image" Canvas.Left="0" Canvas.Top="0"
+                                                       Stretch="Fill" IsHitTestVisible="False" />
+                                                <Canvas x:Name="v2_vector_selection_canvas" Canvas.Left="0" Canvas.Top="0"
+                                                        Width="1000" Height="650" Background="#01FFFFFF"
+                                                        Focusable="True" Cursor="Cross" />
+                                                <Line Visibility="Collapsed" X1="200" Y1="470" X2="735" Y2="470" Stroke="#B8F36B5B" StrokeThickness="7" />
+                                                <Path Data="M 315,470 L 315,240 L 520,240 M 585,470 L 585,205 L 780,205"
+                                                      Stroke="#B80AA6A6" StrokeThickness="5" Fill="Transparent" Visibility="Collapsed" />
+                                                <Button x:Name="v2_marker_1_btn" Canvas.Left="485" Canvas.Top="440" Content="1"
+                                                        Background="#F36B5B" Style="{StaticResource MarkerButtonStyle}" ToolTip="1 • Main pipe" />
+                                                <Button x:Name="v2_marker_2_btn" Canvas.Left="655" Canvas.Top="170" Content="2"
+                                                        Background="#7657E8" Style="{StaticResource MarkerButtonStyle}" ToolTip="2 • Sprinkler" />
+                                                <Button x:Name="v2_marker_3_btn" Canvas.Left="540" Canvas.Top="255" Content="3"
+                                                        Background="#0AA6A6" Style="{StaticResource MarkerButtonStyle}" ToolTip="3 • Branch pipe" />
+                                                <Button x:Name="v2_marker_4_btn" Canvas.Left="300" Canvas.Top="438" Content="4"
+                                                        Background="#F2AE2E" Style="{StaticResource MarkerButtonStyle}" ToolTip="4 • Fitting" />
+                                                <Button x:Name="v2_marker_5_btn" Canvas.Left="710" Canvas.Top="438" Content="5"
+                                                        Background="#36A76D" Style="{StaticResource MarkerButtonStyle}" ToolTip="5 • Valve" />
+                                                <Button x:Name="v2_marker_6_btn" Canvas.Left="850" Canvas.Top="52" Content="6"
+                                                        Background="#8C99A6" Style="{StaticResource MarkerButtonStyle}" ToolTip="6 • Text / ignore" />
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Grid>
+
+                                    <Grid Grid.Row="2" Margin="10,0">
+                                        <TextBlock Text="0     5     10 m" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource SoftBrush}" />
+                                        <TextBlock x:Name="v2_overlay_summary_text" Text="Overlay synchronized with PDF coordinates"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="11"
+                                                   Foreground="{StaticResource SoftBrush}" />
+                                    </Grid>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Column="2" Background="White" BorderBrush="{StaticResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="5" ClipToBounds="True">
+                                <ScrollViewer x:Name="v2_classification_inspector_scroll"
+                                              VerticalScrollBarVisibility="Visible"
+                                              HorizontalScrollBarVisibility="Disabled"
+                                              CanContentScroll="False" PanningMode="VerticalOnly">
+                                <Grid Margin="14,14,8,14">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="ADJUST CLASSIFICATION" FontSize="12" FontWeight="Bold" />
+
+                                    <Grid Grid.Row="1" Margin="0,18,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="38" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border x:Name="v2_selected_layer_badge" Width="32" Height="32" CornerRadius="16"
+                                                Background="{StaticResource VioletBrush}" VerticalAlignment="Top">
+                                            <TextBlock x:Name="v2_selected_layer_number_text" Text="2" Foreground="White" FontWeight="Bold"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1">
+                                            <DockPanel>
+                                                <TextBlock x:Name="v2_selected_layer_name_text" Text="FP-SPRINKLER" FontWeight="Bold" />
+                                                <TextBlock x:Name="v2_selected_confidence_text" Text="88%  •  Review"
+                                                           HorizontalAlignment="Right" Foreground="{StaticResource VioletBrush}" FontSize="11" />
+                                            </DockPanel>
+                                            <TextBlock x:Name="v2_selected_layer_detail_text" Text="94 objects"
+                                                       Foreground="{StaticResource SoftBrush}" FontSize="11" Margin="0,3,0,0" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Border Grid.Row="2" Margin="0,16,0,0" Padding="10"
+                                            Background="#F3F9FA" BorderBrush="#BFE5E5" BorderThickness="1" CornerRadius="5">
+                                        <StackPanel>
+                                            <StackPanel x:Name="v2_cad_layer_direct_panel" Margin="0,0,0,10" Visibility="Collapsed">
+                                                <TextBlock Text="CAD RECOGNITION" FontSize="11" FontWeight="Bold"
+                                                           Foreground="{StaticResource AccentBrush}" />
+                                                <TextBlock Text="Recognition mode" Margin="0,6,0,3"
+                                                           Foreground="{StaticResource SoftBrush}" FontSize="10" />
+                                                <ComboBox x:Name="v2_cad_recognition_mode_combo" Margin="0,0,0,6" />
+                                                <StackPanel x:Name="v2_cad_color_scan_panel" Margin="0,0,0,7">
+                                                    <TextBlock x:Name="v2_cad_scan_mode_label" Text="MEP line scan" Margin="0,2,0,3"
+                                                               Foreground="{StaticResource SoftBrush}" FontSize="10" />
+                                                    <DockPanel Margin="0,0,0,4">
+                                                        <Border x:Name="v2_cad_color_swatch" Width="22" Height="22"
+                                                                Margin="0,0,5,0" CornerRadius="3" BorderBrush="#B8C5CE"
+                                                                BorderThickness="1" Background="#0A62FF" />
+                                                        <ComboBox x:Name="v2_cad_color_combo" MinHeight="24" />
+                                                    </DockPanel>
+                                                    <UniformGrid Columns="2" Margin="0,0,0,4">
+                                                        <Button x:Name="v2_hide_selected_cad_color_btn"
+                                                                Content="Hide selected color"
+                                                                Style="{StaticResource InspectorToolButtonStyle}"
+                                                                ToolTip="Hide the selected CAD color from the preview and exclude it from every scan" />
+                                                        <Button x:Name="v2_restore_hidden_cad_colors_btn"
+                                                                Content="Restore hidden (0)"
+                                                                IsEnabled="False"
+                                                                Style="{StaticResource InspectorToolButtonStyle}"
+                                                                ToolTip="Restore every CAD color hidden during this session" />
+                                                    </UniformGrid>
+                                                    <CheckBox x:Name="v2_cad_hide_architecture_cb"
+                                                              Content="Hide architecture before scan"
+                                                              IsChecked="True" Margin="2,3,0,6"
+                                                              ToolTip="Hide pale and unselected CAD colors from the preview and prevent them from being picked while scanning" />
+                                                    <UniformGrid Columns="2">
+                                                        <Button x:Name="v2_cad_scan_area_btn" Content="▧  Sweep area"
+                                                                Style="{StaticResource InspectorToolButtonStyle}" />
+                                                        <Button x:Name="v2_cad_scan_whole_btn" Content="◎  Scan whole"
+                                                                Style="{StaticResource InspectorToolButtonStyle}" />
+                                                    </UniformGrid>
+                                                </StackPanel>
+                                                <StackPanel x:Name="v2_native_layer_assignment_panel">
+                                                    <ComboBox x:Name="v2_cad_layer_combo" Margin="0,6,0,5"
+                                                              IsTextSearchEnabled="True" />
+                                                    <UniformGrid Columns="3">
+                                                        <Button x:Name="v2_layer_as_main_btn" Content="Main"
+                                                                Style="{StaticResource InspectorToolButtonStyle}" />
+                                                        <Button x:Name="v2_layer_as_sprinkler_btn" Content="Sprinkler"
+                                                                Style="{StaticResource InspectorToolButtonStyle}" />
+                                                        <Button x:Name="v2_layer_as_branch_btn" Content="Branch"
+                                                                Style="{StaticResource InspectorToolButtonStyle}" />
+                                                    </UniformGrid>
+                                                </StackPanel>
+                                                <TextBlock x:Name="v2_cad_layer_direct_hint"
+                                                           Text="Import and analyze CAD to load its native layers."
+                                                           Margin="2,5,2,0" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource SoftBrush}" FontSize="10" />
+                                            </StackPanel>
+                                            <DockPanel Margin="0,0,0,8">
+                                                <TextBlock Text="CAD PICK" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                                                <TextBlock Text="Tab: line → object → similar" HorizontalAlignment="Right"
+                                                           Foreground="{StaticResource SoftBrush}" FontSize="10" />
+                                            </DockPanel>
+                                            <UniformGrid Columns="2">
+                                                <Button x:Name="v2_pick_main_btn" Content="1  Pick main" Style="{StaticResource InspectorToolButtonStyle}" />
+                                                <Button x:Name="v2_pick_branch_btn" Content="3  Pick branch" Style="{StaticResource InspectorToolButtonStyle}" />
+                                                <Button x:Name="v2_pick_sprinkler_btn" Content="2  Pick sprinkler" Style="{StaticResource InspectorToolButtonStyle}" />
+                                                <Button x:Name="v2_pick_similar_btn" Content="✦  Find similar" Style="{StaticResource InspectorToolButtonStyle}" />
+                                                <Button x:Name="v2_exclude_wrong_btn" Content="−  Remove / Sweep" Style="{StaticResource InspectorToolButtonStyle}"
+                                                        ToolTip="Click one wrong markup object or drag a rectangle to remove many" />
+                                                <Button x:Name="v2_clear_exclusions_btn" Content="↶  Restore removed" Style="{StaticResource InspectorToolButtonStyle}"
+                                                        ToolTip="Restore every object removed from the selected class" />
+                                                <Button x:Name="v2_isolate_result_btn" Content="◉  Isolate result" Style="{StaticResource InspectorToolButtonStyle}" />
+                                                <Button x:Name="v2_show_all_result_btn" Content="◎  Show all" Style="{StaticResource InspectorToolButtonStyle}" />
+                                            </UniformGrid>
+                                            <Button x:Name="v2_remove_last_seed_btn" Margin="0,4,0,0"
+                                                    Content="−  Remove last seed and its Find Similar result"
+                                                    Style="{StaticResource InspectorToolButtonStyle}" />
+                                            <TextBlock x:Name="v2_vector_pick_text" Margin="2,8,2,0"
+                                                       Text="Load a vector PDF, choose a pick type, then click an exact line."
+                                                       TextWrapping="Wrap" Foreground="{StaticResource SoftBrush}" FontSize="10.5" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <StackPanel Grid.Row="3" Margin="0,16,0,0">
+                                        <TextBlock Text="Revit category" Style="{StaticResource LabelStyle}" />
+                                        <ComboBox x:Name="v2_mapping_category_combo" />
+                                        <TextBlock Text="Family / type" Style="{StaticResource LabelStyle}" Margin="0,12,0,6" />
+                                        <ComboBox x:Name="v2_mapping_family_combo" />
+                                        <TextBlock Text="Detection rule" Style="{StaticResource LabelStyle}" Margin="0,12,0,6" />
+                                        <ComboBox x:Name="v2_detection_rule_combo" />
+                                    </StackPanel>
+
+                                    <UniformGrid Grid.Row="4" Columns="2" Margin="0,16,0,0">
+                                        <Button x:Name="v2_reclassify_marker_btn" Content="⌘  Reclassify" Style="{StaticResource InspectorToolButtonStyle}"
+                                                ToolTip="Choose Revit category, family/type and detection rule" />
+                                        <Button x:Name="v2_add_marker_btn" Content="＋  Add" Style="{StaticResource InspectorToolButtonStyle}"
+                                                ToolTip="Add another PDF seed to the selected classification" />
+                                        <Button x:Name="v2_delete_marker_btn" Content="▱  Delete class" Style="{StaticResource InspectorToolButtonStyle}"
+                                                ToolTip="Remove the entire selected classification; use Remove from class above for one wrong object" />
+                                        <Button x:Name="v2_redraw_marker_btn" Content="✎  Redraw" Style="{StaticResource InspectorToolButtonStyle}"
+                                                IsEnabled="False" ToolTip="Manual vector redraw is not enabled in this build" />
+                                        <Button x:Name="v2_split_marker_btn" Content="⑂  Split / Merge" Style="{StaticResource InspectorToolButtonStyle}"
+                                                IsEnabled="False" ToolTip="Manual split/merge is not enabled in this build" />
+                                        <Button x:Name="v2_move_marker_btn" Content="✥  Move marker" Style="{StaticResource InspectorToolButtonStyle}"
+                                                ToolTip="Move only the numbered review badge; classified geometry is unchanged" />
+                                        <Button x:Name="v2_ignore_marker_btn" Content="◉  Ignore class" Style="{StaticResource InspectorToolButtonStyle}"
+                                                ToolTip="Keep markup visible but exclude this class from Revit creation" />
+                                        <Button x:Name="v2_apply_mapping_btn" Content="✓  Apply fields" Style="{StaticResource InspectorToolButtonStyle}"
+                                                ToolTip="Save the selected Revit category and family/type" />
+                                    </UniformGrid>
+
+                                    <TextBlock x:Name="v2_adjust_mode_text" Grid.Row="5" Margin="0,14,0,0"
+                                               Text="Original PDF is unchanged. Adjustments are saved as mapping data."
+                                               TextWrapping="Wrap" Foreground="{StaticResource SoftBrush}" FontSize="11" />
+
+                                    <Grid Grid.Row="7" Margin="0,16,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="1.45*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button x:Name="v2_reset_mapping_btn" Content="Reset" Margin="0,0,6,0" />
+                                        <Button x:Name="v2_confirm_marker_btn" Grid.Column="1" Content="Confirm mapping"
+                                                Style="{StaticResource PrimaryButtonStyle}" />
+                                    </Grid>
+                                </Grid>
+                                </ScrollViewer>
+                            </Border>
+                        </Grid>
+                    </Grid>
+
+                <Grid Margin="0,12,0,0" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="320" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                                <TextBlock Text="Layer verification" FontWeight="SemiBold" FontSize="14" />
+                                <TextBlock Text="Compare every classification with its numbered PDF overlay."
+                                           Foreground="{StaticResource SoftBrush}" FontSize="11" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="FILTER GROUPS" Foreground="{StaticResource SoftBrush}" FontSize="9" FontWeight="Bold" />
+                                <TextBox x:Name="layer_filter_tb" Margin="0,3,0,0" ToolTip="Filter by layer, category, or status" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0">
+                                <Ellipse Width="8" Height="8" Fill="{StaticResource GreenBrush}" Margin="0,0,6,0" />
+                                <TextBlock Text="6 groups · 526 classified · 21 review" Foreground="{StaticResource SoftBrush}" FontSize="12" />
+                            </StackPanel>
+                            <Button x:Name="auto_map_btn" Grid.Column="3" Content="Run Auto Map" Style="{StaticResource PrimaryButtonStyle}" />
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="1" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="0.86*" MinWidth="510" />
+                            <ColumnDefinition Width="1.14*" MinWidth="650" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="12" Margin="0,0,6,0" Effect="{StaticResource CardShadow}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Border Padding="16,14" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                                    <Grid>
+                                        <StackPanel>
+                                            <TextBlock Text="Analyzed layer groups" Style="{StaticResource SectionTitleStyle}" />
+                                            <TextBlock Margin="0,4,0,0" Text="The number and color are reused on the imported PDF."
+                                                       Foreground="{StaticResource SoftBrush}" FontSize="12" />
+                                        </StackPanel>
+                                        <Border HorizontalAlignment="Right" VerticalAlignment="Center" Background="#E5F8F7" CornerRadius="12" Padding="10,5">
+                                            <TextBlock Text="AUTO INDEXED" Foreground="#087F7F" FontSize="10" FontWeight="Bold" />
+                                        </Border>
+                                    </Grid>
+                                </Border>
+
+                                <DataGrid x:Name="layer_grid" Grid.Row="1" Margin="8,6"
+                                          SelectionMode="Single" SelectionUnit="FullRow" RowHeight="44"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <DataGrid.Columns>
+                                        <DataGridTemplateColumn Header="#" Width="54">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Border Width="28" Height="28" CornerRadius="14" Background="{Binding ColorHex}"
+                                                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Marker}" Foreground="White" FontWeight="Bold"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTextColumn Header="PDF / CAD group" Binding="{Binding CadLayer}" Width="156" />
+                                        <DataGridTextColumn Header="Classified as" Binding="{Binding RevitCategory}" Width="104" />
+                                        <DataGridTextColumn Header="Items" Binding="{Binding Detected}" Width="56" />
+                                        <DataGridTextColumn Header="Match" Binding="{Binding Confidence}" Width="60" />
+                                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="76" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <Border Grid.Row="2" Margin="12" Background="#F6F9FA" BorderBrush="#DCE5EA" BorderThickness="1" CornerRadius="9" Padding="12">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,0,0,10">
+                                            <Border x:Name="selected_layer_badge" Width="28" Height="28" CornerRadius="14" Background="{StaticResource CoralBrush}" Margin="0,0,9,0">
+                                                <TextBlock x:Name="selected_layer_number_text" Text="1" Foreground="White" FontWeight="Bold"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <StackPanel>
+                                                <TextBlock x:Name="selected_layer_name_text" Text="FP-PIPE-MAIN" FontWeight="SemiBold" />
+                                                <TextBlock x:Name="selected_layer_detail_text" Text="48 detected · 96% confidence"
+                                                           Foreground="{StaticResource SoftBrush}" FontSize="11" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Margin="0,0,8,0">
+                                            <TextBlock Text="Revit category" Style="{StaticResource LabelStyle}" />
+                                            <ComboBox x:Name="mapping_category_combo" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,8,0">
+                                            <TextBlock Text="Family / type" Style="{StaticResource LabelStyle}" />
+                                            <ComboBox x:Name="mapping_family_combo" />
+                                        </StackPanel>
+                                        <Button x:Name="apply_mapping_btn" Grid.Row="1" Grid.Column="2" Content="Apply override"
+                                                VerticalAlignment="Bottom" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="1" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="12" Margin="6,0,0,0" Effect="{StaticResource CardShadow}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Border Padding="16,12" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="Imported PDF verification" Style="{StaticResource SectionTitleStyle}" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                <TextBlock x:Name="pdf_file_name_text" Text="Level_02_FP.pdf" Foreground="{StaticResource SoftBrush}" FontSize="12" />
+                                                <TextBlock x:Name="pdf_document_meta_text" Text="  ·  Select a PDF to load the real document" Foreground="{StaticResource SoftBrush}" FontSize="12" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button x:Name="pdf_zoom_out_btn" Content="−" Width="34" Padding="0" ToolTip="Zoom out" />
+                                            <TextBlock x:Name="pdf_zoom_text" Text="100%" Width="46" TextAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                            <Button x:Name="pdf_zoom_in_btn" Content="+" Width="34" Padding="0" ToolTip="Zoom in" />
+                                            <Button x:Name="pdf_fit_btn" Content="Fit" Margin="6,0,14,0" Padding="12,0" ToolTip="Reset PDF zoom" />
+                                            <CheckBox x:Name="show_overlay_cb" Content="Show numbered overlay" IsChecked="True" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                            <Border Background="#EEF3FF" CornerRadius="12" Padding="10,5">
+                                                <TextBlock Text="AUTO MARKED" Foreground="#4F46B8" FontWeight="Bold" FontSize="10" />
+                                            </Border>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <Border Grid.Row="1" Margin="14,12" Background="#EEF2F4" BorderBrush="#CFD9DF" BorderThickness="1" CornerRadius="9" ClipToBounds="True">
+                                    <Grid x:Name="pdf_viewer_host" Background="#EEF2F4">
+                                    <Viewbox x:Name="pdf_placeholder_view" Stretch="Uniform">
+                                        <Canvas Width="760" Height="430" Background="#F7F9FA">
+                                            <Border Canvas.Left="26" Canvas.Top="22" Width="708" Height="384" Background="White"
+                                                    BorderBrush="#B8C4CC" BorderThickness="2" CornerRadius="2" />
+                                            <TextBlock Canvas.Left="46" Canvas.Top="36" Text="LEVEL 02 · FIRE PROTECTION PLAN"
+                                                       Foreground="#758491" FontSize="11" FontWeight="SemiBold" />
+                                            <TextBlock Canvas.Left="628" Canvas.Top="36" Text="PDF 01 / 03" Foreground="#9AA6AF" FontSize="10" />
+
+                                            <Canvas Opacity="0.72">
+                                                <Line X1="54" Y1="82" X2="706" Y2="82" Stroke="#BFC9CF" StrokeThickness="2" />
+                                                <Line X1="54" Y1="182" X2="706" Y2="182" Stroke="#CDD5DA" />
+                                                <Line X1="54" Y1="286" X2="706" Y2="286" Stroke="#CDD5DA" />
+                                                <Line X1="54" Y1="374" X2="706" Y2="374" Stroke="#BFC9CF" StrokeThickness="2" />
+                                                <Line X1="86" Y1="68" X2="86" Y2="386" Stroke="#D8DFE3" StrokeDashArray="4,3" />
+                                                <Line X1="244" Y1="68" X2="244" Y2="386" Stroke="#D8DFE3" StrokeDashArray="4,3" />
+                                                <Line X1="410" Y1="68" X2="410" Y2="386" Stroke="#D8DFE3" StrokeDashArray="4,3" />
+                                                <Line X1="574" Y1="68" X2="574" Y2="386" Stroke="#D8DFE3" StrokeDashArray="4,3" />
+                                                <Rectangle Canvas.Left="68" Canvas.Top="98" Width="150" Height="68" Fill="#FAFBFC" Stroke="#C8D1D7" />
+                                                <Rectangle Canvas.Left="232" Canvas.Top="98" Width="154" Height="68" Fill="#FAFBFC" Stroke="#C8D1D7" />
+                                                <Rectangle Canvas.Left="400" Canvas.Top="98" Width="142" Height="68" Fill="#FAFBFC" Stroke="#C8D1D7" />
+                                                <Rectangle Canvas.Left="556" Canvas.Top="98" Width="132" Height="68" Fill="#FAFBFC" Stroke="#C8D1D7" />
+                                                <Rectangle Canvas.Left="68" Canvas.Top="198" Width="206" Height="72" Fill="#FAFBFC" Stroke="#C8D1D7" />
+                                                <Rectangle Canvas.Left="288" Canvas.Top="198" Width="124" Height="72" Fill="#FAFBFC" Stroke="#C8D1D7" />
+                                                <Rectangle Canvas.Left="426" Canvas.Top="198" Width="262" Height="72" Fill="#FAFBFC" Stroke="#C8D1D7" />
+                                                <Rectangle Canvas.Left="68" Canvas.Top="302" Width="138" Height="54" Fill="#FAFBFC" Stroke="#C8D1D7" />
+                                                <Rectangle Canvas.Left="220" Canvas.Top="302" Width="176" Height="54" Fill="#FAFBFC" Stroke="#C8D1D7" />
+                                                <Rectangle Canvas.Left="410" Canvas.Top="302" Width="128" Height="54" Fill="#FAFBFC" Stroke="#C8D1D7" />
+                                                <Rectangle Canvas.Left="552" Canvas.Top="302" Width="136" Height="54" Fill="#FAFBFC" Stroke="#C8D1D7" />
+                                                <Path Data="M 198,98 L 198,82 M 360,98 L 360,82 M 520,98 L 520,82 M 274,270 L 274,286 M 412,270 L 412,286"
+                                                      Stroke="#9DAAB3" StrokeThickness="2" />
+                                            </Canvas>
+
+                                        </Canvas>
+                                    </Viewbox>
+                                    <Viewbox x:Name="pdf_overlay_view" Stretch="Uniform">
+                                        <Canvas Width="760" Height="430">
+                                            <Canvas x:Name="pdf_overlay_canvas">
+                                                <!-- 1: main pipe -->
+                                                <Line X1="76" Y1="286" X2="688" Y2="286" Stroke="#F36B5B" StrokeThickness="8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                <!-- 3: branch pipe -->
+                                                <Path Data="M 152,286 L 152,150 L 312,150 M 350,286 L 350,118 L 500,118 M 574,286 L 574,218 L 674,218"
+                                                      Stroke="#0AA6A6" StrokeThickness="5" Fill="Transparent" />
+                                                <Path Data="M 102,150 L 102,126 M 206,150 L 206,126 M 312,150 L 312,126 M 410,118 L 410,94 M 500,118 L 500,94 M 620,218 L 620,194 M 674,218 L 674,194"
+                                                      Stroke="#0AA6A6" StrokeThickness="3" Fill="Transparent" />
+                                                <!-- 2: sprinkler heads -->
+                                                <Ellipse Canvas.Left="94" Canvas.Top="114" Width="16" Height="16" Fill="White" Stroke="#7657E8" StrokeThickness="4" />
+                                                <Ellipse Canvas.Left="198" Canvas.Top="114" Width="16" Height="16" Fill="White" Stroke="#7657E8" StrokeThickness="4" />
+                                                <Ellipse Canvas.Left="304" Canvas.Top="114" Width="16" Height="16" Fill="White" Stroke="#7657E8" StrokeThickness="4" />
+                                                <Ellipse Canvas.Left="402" Canvas.Top="82" Width="16" Height="16" Fill="White" Stroke="#7657E8" StrokeThickness="4" />
+                                                <Ellipse Canvas.Left="492" Canvas.Top="82" Width="16" Height="16" Fill="White" Stroke="#7657E8" StrokeThickness="4" />
+                                                <Ellipse Canvas.Left="612" Canvas.Top="182" Width="16" Height="16" Fill="White" Stroke="#7657E8" StrokeThickness="4" />
+                                                <Ellipse Canvas.Left="666" Canvas.Top="182" Width="16" Height="16" Fill="White" Stroke="#7657E8" StrokeThickness="4" />
+                                                <!-- 4: fittings, 5: valve -->
+                                                <Rectangle Canvas.Left="145" Canvas.Top="279" Width="14" Height="14" Fill="#F2AE2E" Stroke="White" StrokeThickness="2" />
+                                                <Rectangle Canvas.Left="343" Canvas.Top="279" Width="14" Height="14" Fill="#F2AE2E" Stroke="White" StrokeThickness="2" />
+                                                <Path Data="M 526,278 L 538,286 L 526,294 L 514,286 Z" Fill="#36A76D" Stroke="White" StrokeThickness="2" />
+
+                                                <Button x:Name="marker_1_btn" Canvas.Left="94" Canvas.Top="304" Content="1" Background="#F36B5B" Style="{StaticResource MarkerButtonStyle}" ToolTip="1 · Main pipe" />
+                                                <Button x:Name="marker_2_btn" Canvas.Left="472" Canvas.Top="48" Content="2" Background="#7657E8" Style="{StaticResource MarkerButtonStyle}" ToolTip="2 · Sprinkler" />
+                                                <Button x:Name="marker_3_btn" Canvas.Left="326" Canvas.Top="158" Content="3" Background="#0AA6A6" Style="{StaticResource MarkerButtonStyle}" ToolTip="3 · Branch pipe" />
+                                                <Button x:Name="marker_4_btn" Canvas.Left="130" Canvas.Top="245" Content="4" Background="#F2AE2E" Style="{StaticResource MarkerButtonStyle}" ToolTip="4 · Pipe fitting" />
+                                                <Button x:Name="marker_5_btn" Canvas.Left="506" Canvas.Top="244" Content="5" Background="#36A76D" Style="{StaticResource MarkerButtonStyle}" ToolTip="5 · Valve" />
+                                                <Button x:Name="marker_6_btn" Canvas.Left="638" Canvas.Top="34" Content="6" Background="#8C99A6" Style="{StaticResource MarkerButtonStyle}" ToolTip="6 · Text / ignore" />
+                                            </Canvas>
+                                        </Canvas>
+                                    </Viewbox>
+                                    </Grid>
+                                </Border>
+
+                                <Border Grid.Row="2" Margin="14,0,14,14" Background="#F6F9FA" BorderBrush="#DCE5EA" BorderThickness="1" CornerRadius="9" Padding="12">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock x:Name="preview_selection_text" Text="Marker 1 · Main pipe selected" FontWeight="SemiBold" />
+                                            <TextBlock x:Name="overlay_summary_text" Margin="0,4,0,0"
+                                                       Text="48 objects highlighted on PDF · mapped to Wet Pipe - Main"
+                                                       Foreground="{StaticResource SoftBrush}" FontSize="12" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button x:Name="reclassify_marker_btn" Content="Adjust mapping" Margin="0,0,8,0" />
+                                            <Button x:Name="confirm_marker_btn" Content="Looks correct" Style="{StaticResource PrimaryButtonStyle}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="03   CONNECTIONS">
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="260" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="300" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,0,12,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Connection templates" Style="{StaticResource SectionTitleStyle}" />
+                                <TextBlock Margin="0,4,0,0" Text="Choose how heads connect to branch pipes." TextWrapping="Wrap" Foreground="{StaticResource SoftBrush}" FontSize="12" />
+                            </StackPanel>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,12,0,8">
+                                <StackPanel>
+                                    <Button x:Name="direct_drop_btn" Padding="0" BorderThickness="0" Background="Transparent" Margin="0,0,0,8">
+                                        <Border x:Name="direct_drop_card" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="9" Padding="10" Background="White">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="74" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <Canvas Width="66" Height="48">
+                                                    <Line X1="5" Y1="10" X2="58" Y2="10" Stroke="{StaticResource CoralBrush}" StrokeThickness="5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                    <Line X1="32" Y1="10" X2="32" Y2="35" Stroke="{StaticResource AccentBrush}" StrokeThickness="4" />
+                                                    <Ellipse Canvas.Left="27" Canvas.Top="33" Width="10" Height="10" Stroke="{StaticResource VioletBrush}" StrokeThickness="2" />
+                                                </Canvas>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="Direct Drop" FontWeight="SemiBold" />
+                                                    <TextBlock Text="Pendent" FontSize="11" Foreground="{StaticResource SoftBrush}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </Button>
+
+                                    <Button x:Name="armover_btn" Padding="0" BorderThickness="0" Background="Transparent" Margin="0,0,0,8">
+                                        <Border x:Name="armover_card" BorderBrush="{StaticResource AccentBrush}" BorderThickness="2" CornerRadius="9" Padding="10" Background="{StaticResource AccentSoftBrush}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="74" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <Canvas Width="66" Height="48">
+                                                    <Line X1="4" Y1="8" X2="58" Y2="8" Stroke="{StaticResource CoralBrush}" StrokeThickness="5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                    <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="4" StrokeLineJoin="Round" Data="M 20,8 L 20,28 L 50,28 L 50,38" />
+                                                    <Ellipse Canvas.Left="45" Canvas.Top="36" Width="10" Height="10" Stroke="{StaticResource VioletBrush}" StrokeThickness="2" />
+                                                </Canvas>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="Armover" FontWeight="SemiBold" />
+                                                    <TextBlock Text="Pendent" FontSize="11" Foreground="{StaticResource SoftBrush}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </Button>
+
+                                    <Button x:Name="flexible_drop_btn" Padding="0" BorderThickness="0" Background="Transparent" Margin="0,0,0,8">
+                                        <Border x:Name="flexible_drop_card" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="9" Padding="10" Background="White">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="74" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <Canvas Width="66" Height="48">
+                                                    <Line X1="4" Y1="8" X2="58" Y2="8" Stroke="{StaticResource CoralBrush}" StrokeThickness="5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                    <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="4" StrokeDashArray="2 2" Data="M 20,8 C 20,28 50,16 50,38" />
+                                                    <Ellipse Canvas.Left="45" Canvas.Top="36" Width="10" Height="10" Stroke="{StaticResource VioletBrush}" StrokeThickness="2" />
+                                                </Canvas>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="Flexible Drop" FontWeight="SemiBold" />
+                                                    <TextBlock Text="Pendent" FontSize="11" Foreground="{StaticResource SoftBrush}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </Button>
+
+                                    <Button x:Name="direct_rise_btn" Padding="0" BorderThickness="0" Background="Transparent" Margin="0,0,0,8">
+                                        <Border x:Name="direct_rise_card" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="9" Padding="10" Background="White">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="74" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <Canvas Width="66" Height="48">
+                                                    <Line X1="4" Y1="35" X2="58" Y2="35" Stroke="{StaticResource CoralBrush}" StrokeThickness="5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                    <Line X1="32" Y1="35" X2="32" Y2="12" Stroke="{StaticResource AccentBrush}" StrokeThickness="4" />
+                                                    <Ellipse Canvas.Left="27" Canvas.Top="3" Width="10" Height="10" Stroke="{StaticResource VioletBrush}" StrokeThickness="2" />
+                                                    <Path Stroke="{StaticResource VioletBrush}" StrokeThickness="1.5" Data="M 24,4 L 32,0 L 40,4" />
+                                                </Canvas>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="Direct Rise" FontWeight="SemiBold" />
+                                                    <TextBlock Text="Upright" FontSize="11" Foreground="{StaticResource SoftBrush}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </Button>
+
+                                    <Button x:Name="armover_rise_btn" Padding="0" BorderThickness="0" Background="Transparent">
+                                        <Border x:Name="armover_rise_card" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="9" Padding="10" Background="White">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="74" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <Canvas Width="66" Height="48">
+                                                    <Line X1="4" Y1="35" X2="58" Y2="35" Stroke="{StaticResource CoralBrush}" StrokeThickness="5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                    <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="4" StrokeLineJoin="Round" Data="M 15,35 L 15,22 L 48,22 L 48,10" />
+                                                    <Ellipse Canvas.Left="43" Canvas.Top="1" Width="10" Height="10" Stroke="{StaticResource VioletBrush}" StrokeThickness="2" />
+                                                    <Path Stroke="{StaticResource VioletBrush}" StrokeThickness="1.5" Data="M 40,2 L 48,-2 L 56,2" />
+                                                </Canvas>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="Armover Rise" FontWeight="SemiBold" />
+                                                    <TextBlock Text="Upright" FontSize="11" Foreground="{StaticResource SoftBrush}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </Button>
+                                </StackPanel>
+                            </ScrollViewer>
+
+                            <CheckBox x:Name="apply_similar_cb" Grid.Row="2" Content="Apply to similar detected heads" IsChecked="True" />
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="1" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Margin="0,0,12,0" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="1.35*" />
+                                <RowDefinition Height="0.9*" />
+                            </Grid.RowDefinitions>
+                            <Grid Margin="16,13">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock x:Name="connection_name_text" Text="Armover" Style="{StaticResource SectionTitleStyle}" />
+                                    <TextBlock x:Name="connection_description_text" Margin="0,4,0,0" Text="Drop, elbow, and horizontal armover to the head." Foreground="{StaticResource SoftBrush}" FontSize="12" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Background="{StaticResource AccentSoftBrush}" BorderThickness="0" CornerRadius="10" Padding="9,5" Margin="0,0,8,0">
+                                        <TextBlock x:Name="connection_orientation_text" Text="Pendent" Foreground="#078C8C" FontWeight="SemiBold" FontSize="11" />
+                                    </Border>
+                                    <Border Background="#E9F6EC" BorderThickness="0" CornerRadius="10" Padding="9,5">
+                                        <TextBlock x:Name="connection_confidence_text" Text="93%" Foreground="#23834B" FontWeight="Bold" FontSize="11" />
+                                    </Border>
+                                </StackPanel>
+                            </Grid>
+
+                            <Border Grid.Row="1" Background="#F8FAFB" BorderBrush="#E1E7EB" BorderThickness="0,1,0,1">
+                                <Grid>
+                                    <Canvas x:Name="preview_direct_drop" Visibility="Collapsed">
+                                        <Line X1="120" Y1="105" X2="650" Y2="105" Stroke="{StaticResource CoralBrush}" StrokeThickness="13" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                        <Path Stroke="#9AA5AE" StrokeThickness="19" Data="M 355,105 L 355,280" />
+                                        <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="5" StrokeDashArray="8 5" Data="M 355,108 L 355,276">
+                                            <Path.Triggers><EventTrigger RoutedEvent="FrameworkElement.Loaded"><BeginStoryboard><Storyboard RepeatBehavior="Forever"><DoubleAnimation Storyboard.TargetProperty="StrokeDashOffset" From="0" To="-26" Duration="0:0:1" /></Storyboard></BeginStoryboard></EventTrigger></Path.Triggers>
+                                        </Path>
+                                        <Ellipse Canvas.Left="340" Canvas.Top="270" Width="30" Height="30" Fill="#FFFFFF" Stroke="{StaticResource VioletBrush}" StrokeThickness="4" />
+                                        <TextBlock Canvas.Left="382" Canvas.Top="215" Text="Direct vertical drop" FontWeight="SemiBold" />
+                                    </Canvas>
+
+                                    <Canvas x:Name="preview_armover" Visibility="Visible">
+                                        <Line X1="90" Y1="90" X2="680" Y2="90" Stroke="{StaticResource CoralBrush}" StrokeThickness="13" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                        <Ellipse Canvas.Left="244" Canvas.Top="74" Width="32" Height="32" Fill="{StaticResource AccentBrush}" Stroke="#078C8C" StrokeThickness="3" />
+                                        <Path Stroke="#8C98A1" StrokeThickness="19" StrokeLineJoin="Round" Data="M 260,95 L 260,220 L 520,220 L 520,285" />
+                                        <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="5" StrokeDashArray="9 6" StrokeLineJoin="Round" Data="M 260,98 L 260,220 L 520,220 L 520,280">
+                                            <Path.Triggers><EventTrigger RoutedEvent="FrameworkElement.Loaded"><BeginStoryboard><Storyboard RepeatBehavior="Forever"><DoubleAnimation Storyboard.TargetProperty="StrokeDashOffset" From="0" To="-30" Duration="0:0:1.1" /></Storyboard></BeginStoryboard></EventTrigger></Path.Triggers>
+                                        </Path>
+                                        <Ellipse Canvas.Left="503" Canvas.Top="272" Width="34" Height="34" Fill="#FFFFFF" Stroke="{StaticResource VioletBrush}" StrokeThickness="4" />
+                                        <Line X1="500" Y1="300" X2="540" Y2="300" Stroke="{StaticResource VioletBrush}" StrokeThickness="2" />
+                                        <Line X1="506" Y1="307" X2="534" Y2="307" Stroke="{StaticResource VioletBrush}" StrokeThickness="2" />
+                                        <Line X1="260" Y1="165" X2="520" Y2="165" Stroke="#657383" StrokeThickness="1" />
+                                        <TextBlock Canvas.Left="355" Canvas.Top="140" Text="Armover route" Foreground="{StaticResource SoftBrush}" />
+                                        <TextBlock Canvas.Left="285" Canvas.Top="235" Text="600 mm" FontWeight="SemiBold" />
+                                        <TextBlock Canvas.Left="172" Canvas.Top="150" Text="Drop 350 mm" FontWeight="SemiBold" />
+                                    </Canvas>
+
+                                    <Canvas x:Name="preview_flexible_drop" Visibility="Collapsed">
+                                        <Line X1="90" Y1="90" X2="680" Y2="90" Stroke="{StaticResource CoralBrush}" StrokeThickness="13" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                        <Path Stroke="#8C98A1" StrokeThickness="17" StrokeDashArray="2 2" Data="M 260,95 C 270,180 500,150 520,280" />
+                                        <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="4" StrokeDashArray="7 5" Data="M 260,98 C 270,180 500,150 520,276">
+                                            <Path.Triggers><EventTrigger RoutedEvent="FrameworkElement.Loaded"><BeginStoryboard><Storyboard RepeatBehavior="Forever"><DoubleAnimation Storyboard.TargetProperty="StrokeDashOffset" From="0" To="-24" Duration="0:0:0.9" /></Storyboard></BeginStoryboard></EventTrigger></Path.Triggers>
+                                        </Path>
+                                        <Ellipse Canvas.Left="503" Canvas.Top="272" Width="34" Height="34" Fill="#FFFFFF" Stroke="{StaticResource VioletBrush}" StrokeThickness="4" />
+                                        <TextBlock Canvas.Left="325" Canvas.Top="200" Text="Listed flexible connection" FontWeight="SemiBold" />
+                                    </Canvas>
+
+                                    <Canvas x:Name="preview_direct_rise" Visibility="Collapsed">
+                                        <Line X1="110" Y1="300" X2="680" Y2="300" Stroke="{StaticResource CoralBrush}" StrokeThickness="13" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                        <Path Stroke="#8C98A1" StrokeThickness="19" Data="M 390,296 L 390,110" />
+                                        <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="5" StrokeDashArray="8 5" Data="M 390,294 L 390,115">
+                                            <Path.Triggers><EventTrigger RoutedEvent="FrameworkElement.Loaded"><BeginStoryboard><Storyboard RepeatBehavior="Forever"><DoubleAnimation Storyboard.TargetProperty="StrokeDashOffset" From="0" To="24" Duration="0:0:0.9" /></Storyboard></BeginStoryboard></EventTrigger></Path.Triggers>
+                                        </Path>
+                                        <Ellipse Canvas.Left="372" Canvas.Top="82" Width="36" Height="28" Fill="#FFFFFF" Stroke="{StaticResource VioletBrush}" StrokeThickness="4" />
+                                        <Path Stroke="{StaticResource VioletBrush}" StrokeThickness="3" Data="M 360,85 L 390,66 L 420,85" />
+                                        <TextBlock Canvas.Left="425" Canvas.Top="175" Text="Upright head / vertical sprig" FontWeight="SemiBold" />
+                                    </Canvas>
+
+                                    <Canvas x:Name="preview_armover_rise" Visibility="Collapsed">
+                                        <Line X1="100" Y1="300" X2="680" Y2="300" Stroke="{StaticResource CoralBrush}" StrokeThickness="13" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                        <Path Stroke="#8C98A1" StrokeThickness="19" StrokeLineJoin="Round" Data="M 220,296 L 220,230 L 510,230 L 510,105" />
+                                        <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="5" StrokeDashArray="8 5" StrokeLineJoin="Round" Data="M 220,294 L 220,230 L 510,230 L 510,110">
+                                            <Path.Triggers><EventTrigger RoutedEvent="FrameworkElement.Loaded"><BeginStoryboard><Storyboard RepeatBehavior="Forever"><DoubleAnimation Storyboard.TargetProperty="StrokeDashOffset" From="0" To="-26" Duration="0:0:1" /></Storyboard></BeginStoryboard></EventTrigger></Path.Triggers>
+                                        </Path>
+                                        <Ellipse Canvas.Left="492" Canvas.Top="77" Width="36" Height="28" Fill="#FFFFFF" Stroke="{StaticResource VioletBrush}" StrokeThickness="4" />
+                                        <Path Stroke="{StaticResource VioletBrush}" StrokeThickness="3" Data="M 480,80 L 510,61 L 540,80" />
+                                        <TextBlock Canvas.Left="300" Canvas.Top="245" Text="Offset rise to upright head" FontWeight="SemiBold" />
+                                    </Canvas>
+
+                                    <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="14" Padding="10,6" Background="#FFFFFFEE" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="7">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Ellipse Width="8" Height="8" Fill="{StaticResource GreenBrush}" Margin="0,0,6,0" />
+                                            <TextBlock Text="Connector path valid" FontSize="12" FontWeight="SemiBold" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Row="2" Background="#FCFDFD">
+                                <Grid>
+                                    <Canvas>
+                                        <Line X1="70" Y1="80" X2="760" Y2="80" Stroke="#D0D7DC" StrokeThickness="1" />
+                                        <Line X1="70" Y1="180" X2="760" Y2="180" Stroke="#D0D7DC" StrokeThickness="1" />
+                                        <Line X1="140" Y1="25" X2="140" Y2="220" Stroke="#DCE2E6" StrokeDashArray="4 3" />
+                                        <Line X1="360" Y1="25" X2="360" Y2="220" Stroke="#DCE2E6" StrokeDashArray="4 3" />
+                                        <Line X1="580" Y1="25" X2="580" Y2="220" Stroke="#DCE2E6" StrokeDashArray="4 3" />
+                                        <Line X1="90" Y1="120" X2="690" Y2="120" Stroke="{StaticResource CoralBrush}" StrokeThickness="7" />
+                                        <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="4" StrokeDashArray="8 5" Data="M 340,120 L 340,180 L 560,180">
+                                            <Path.Triggers><EventTrigger RoutedEvent="FrameworkElement.Loaded"><BeginStoryboard><Storyboard RepeatBehavior="Forever"><DoubleAnimation Storyboard.TargetProperty="StrokeDashOffset" From="0" To="-26" Duration="0:0:1" /></Storyboard></BeginStoryboard></EventTrigger></Path.Triggers>
+                                        </Path>
+                                        <Ellipse Canvas.Left="548" Canvas.Top="168" Width="24" Height="24" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" Fill="#FFFFFF" />
+                                        <Ellipse Canvas.Left="530" Canvas.Top="150" Width="60" Height="60" Stroke="{StaticResource GreenBrush}" StrokeThickness="2" StrokeDashArray="4 3" />
+                                    </Canvas>
+                                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14" Padding="8,4" Background="#FFFFFFEE" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6">
+                                        <TextBlock Text="PLAN CHECK  /  nearest branch + clear route" FontSize="11" FontWeight="SemiBold" />
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Grid.Column="2">
+                        <Border Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="15">
+                            <StackPanel>
+                                <TextBlock Text="Connection rules" Style="{StaticResource SectionTitleStyle}" />
+                                <TextBlock Margin="0,14,0,0" Text="Head orientation" Style="{StaticResource LabelStyle}" />
+                                <ComboBox x:Name="head_orientation_combo" />
+                                <TextBlock Margin="0,12,0,0" Text="Nearest branch" Style="{StaticResource LabelStyle}" />
+                                <ComboBox x:Name="nearest_branch_combo" />
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,5,0">
+                                        <TextBlock Text="Max armover" Style="{StaticResource LabelStyle}" />
+                                        <TextBox x:Name="max_armover_tb" Text="900 mm" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                                        <TextBlock Text="Min clearance" Style="{StaticResource LabelStyle}" />
+                                        <TextBox x:Name="clearance_tb" Text="200 mm" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Margin="0,12,0,0" Text="Fitting set" Style="{StaticResource LabelStyle}" />
+                                <ComboBox x:Name="fitting_set_combo" />
+                                <TextBlock Margin="0,12,0,0" Text="Revit pipe type" Style="{StaticResource LabelStyle}" />
+                                <ComboBox x:Name="v2_pipe_type_combo" />
+                                <TextBlock x:Name="v2_pipe_routing_status_text" Margin="0,5,0,0" TextWrapping="Wrap" FontSize="10.5" Foreground="{StaticResource SoftBrush}" />
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,5,0">
+                                        <TextBlock Text="Main pipe size" Style="{StaticResource LabelStyle}" />
+                                        <ComboBox x:Name="v2_main_dn_combo" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                                        <TextBlock Text="Branch pipe size" Style="{StaticResource LabelStyle}" />
+                                        <ComboBox x:Name="v2_branch_dn_combo" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Margin="0,12,0,0" Text="Pipe elevation above level" Style="{StaticResource LabelStyle}" />
+                                <TextBox x:Name="v2_pipe_elevation_tb" Text="3000" />
+                                <TextBlock Margin="0,6,0,0" Text="Fittings follow the selected Pipe Type routing preferences." TextWrapping="Wrap" FontSize="10.5" Foreground="{StaticResource SoftBrush}" />
+                                <Button x:Name="save_rule_btn" Margin="0,16,0,0" Content="Save connection rule" Style="{StaticResource PrimaryButtonStyle}" />
+                                <TextBlock x:Name="rule_saved_text" Margin="0,8,0,0" Text="Rule not saved yet" TextWrapping="Wrap" Foreground="{StaticResource SoftBrush}" FontSize="11" />
+                            </StackPanel>
+                        </Border>
+                        <Border Margin="0,12,0,0" Background="#EAF7EF" BorderBrush="#BFE3C9" BorderThickness="1" CornerRadius="10" Padding="12">
+                            <StackPanel>
+                                <TextBlock Text="Orientation safeguard" FontWeight="SemiBold" Foreground="#23834B" />
+                                <TextBlock Margin="0,4,0,0" Text="Upright heads use rise templates; pendent heads use drop templates. Sidewall heads remain review-only." TextWrapping="Wrap" FontSize="11" Foreground="#3E7454" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="04   SIZING">
+                <Grid Margin="0,12,0,0" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="340" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="300" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,0,12,0">
+                        <StackPanel>
+                            <TextBlock Text="Design basis" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Margin="0,5,0,16" Text="Sizing is preliminary until hydraulic inputs are complete." TextWrapping="Wrap" Foreground="{StaticResource SoftBrush}" FontSize="12" />
+                            <TextBlock Text="Design standard" Style="{StaticResource LabelStyle}" />
+                            <ComboBox x:Name="design_standard_combo" />
+                            <TextBlock Margin="0,12,0,0" Text="Hazard classification" Style="{StaticResource LabelStyle}" />
+                            <ComboBox x:Name="hazard_combo" />
+                            <TextBlock Margin="0,12,0,0" Text="Sizing method" Style="{StaticResource LabelStyle}" />
+                            <ComboBox x:Name="sizing_method_combo" />
+                            <TextBlock Margin="0,12,0,0" Text="Sprinkler K-factor" Style="{StaticResource LabelStyle}" />
+                            <ComboBox x:Name="k_factor_combo" />
+                            <TextBlock Margin="0,12,0,0" Text="Water supply" Style="{StaticResource LabelStyle}" />
+                            <ComboBox x:Name="water_supply_combo" />
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <StackPanel Margin="0,0,5,0">
+                                    <TextBlock Text="Static pressure" Style="{StaticResource LabelStyle}" />
+                                    <TextBox Text="-" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                                    <TextBlock Text="Residual / flow" Style="{StaticResource LabelStyle}" />
+                                    <TextBox Text="-" />
+                                </StackPanel>
+                            </Grid>
+                            <Button x:Name="auto_size_btn" Margin="0,16,0,0" Content="Auto Size &amp; Preview" Style="{StaticResource PrimaryButtonStyle}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Margin="0,0,12,0" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <DockPanel Margin="16,14">
+                                <Border DockPanel.Dock="Right" Background="#FFF2D6" BorderBrush="#F1D494" BorderThickness="1" CornerRadius="10" Padding="9,4">
+                                    <TextBlock Text="PRELIMINARY" Foreground="#A46700" FontWeight="Bold" FontSize="10" />
+                                </Border>
+                                <TextBlock Text="Network sizing preview" Style="{StaticResource SectionTitleStyle}" />
+                            </DockPanel>
+                            <Border Grid.Row="1" Background="#F8FAFB" BorderBrush="#E1E7EB" BorderThickness="0,1,0,1">
+                                <Canvas>
+                                    <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="14" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M 100,320 L 690,320 M 240,320 L 240,120 M 470,320 L 470,120" />
+                                    <Path Stroke="{StaticResource CoralBrush}" StrokeThickness="7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M 240,120 L 150,120 M 240,120 L 350,120 M 470,120 L 580,120 M 470,320 L 470,430 M 690,320 L 690,170" />
+                                    <Ellipse Canvas.Left="138" Canvas.Top="108" Width="24" Height="24" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" Fill="White" />
+                                    <Ellipse Canvas.Left="338" Canvas.Top="108" Width="24" Height="24" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" Fill="White" />
+                                    <Ellipse Canvas.Left="568" Canvas.Top="108" Width="24" Height="24" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" Fill="White" />
+                                    <Ellipse Canvas.Left="458" Canvas.Top="418" Width="24" Height="24" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" Fill="White" />
+                                    <Border Canvas.Left="115" Canvas.Top="342" Background="#E5F8F7" BorderThickness="0" CornerRadius="8" Padding="9,5"><TextBlock Text="MAIN  /  pending" FontWeight="SemiBold" Foreground="#078C8C" /></Border>
+                                    <Border Canvas.Left="255" Canvas.Top="76" Background="#FFF0EE" BorderThickness="0" CornerRadius="8" Padding="9,5"><TextBlock Text="BRANCH  /  DN25 proposed" FontWeight="SemiBold" Foreground="#B74D42" /></Border>
+                                    <Border Canvas.Left="520" Canvas.Top="275" Background="#F0EBFF" BorderThickness="0" CornerRadius="8" Padding="9,5"><TextBlock Text="94 heads" FontWeight="SemiBold" Foreground="#5C42B8" /></Border>
+                                </Canvas>
+                            </Border>
+                            <Border Grid.Row="2" Margin="14" Background="#F5F7F8" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <StackPanel><TextBlock Text="Connected heads" Style="{StaticResource LabelStyle}" /><TextBlock Text="94" FontSize="20" FontWeight="Bold" /></StackPanel>
+                                    <StackPanel Grid.Column="1"><TextBlock Text="Remote candidates" Style="{StaticResource LabelStyle}" /><TextBlock Text="12" FontSize="20" FontWeight="Bold" /></StackPanel>
+                                    <StackPanel Grid.Column="2"><TextBlock Text="Blocked segments" Style="{StaticResource LabelStyle}" /><TextBlock Text="1" FontSize="20" FontWeight="Bold" Foreground="{StaticResource RedBrush}" /></StackPanel>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Grid.Column="2">
+                        <Border Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+                            <StackPanel>
+                                <TextBlock Text="Proposed sizes" Style="{StaticResource SectionTitleStyle}" />
+                                <Grid Margin="0,14,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Head connection" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="head_size_text" Grid.Column="1" Text="DN15" FontWeight="Bold" />
+                                </Grid>
+                                <Separator Margin="0,10" Background="#E1E7EB" />
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="Branch pipe" VerticalAlignment="Center" /><TextBlock x:Name="branch_size_text" Grid.Column="1" Text="DN25 proposed" FontWeight="Bold" Foreground="{StaticResource CoralBrush}" /></Grid>
+                                <Separator Margin="0,10" Background="#E1E7EB" />
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="Main pipe" VerticalAlignment="Center" /><TextBlock x:Name="main_size_text" Grid.Column="1" Text="Pending" FontWeight="Bold" Foreground="#A46700" /></Grid>
+                            </StackPanel>
+                        </Border>
+                        <Border x:Name="sizing_status_border" Margin="0,12,0,0" Background="#FFF2D6" BorderBrush="#F1D494" BorderThickness="1" CornerRadius="10" Padding="13">
+                            <StackPanel>
+                                <TextBlock Text="Hydraulic verification" FontWeight="SemiBold" Foreground="#A46700" />
+                                <TextBlock x:Name="sizing_status_text" Margin="0,4,0,0" Text="Preliminary only - add water supply data for hydraulic verification." TextWrapping="Wrap" FontSize="11" Foreground="#8D6B2C" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="05   REVIEW">
+                <Grid Margin="0,12,0,0" Visibility="Collapsed">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Border Background="#E9F7EF" BorderBrush="#BFE3C9" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,8,0"><StackPanel><TextBlock Text="Ready" FontWeight="SemiBold" Foreground="#23834B" /><TextBlock Text="372" FontSize="25" FontWeight="Bold" Foreground="#23834B" /></StackPanel></Border>
+                        <Border Grid.Column="1" Background="#FFF7E7" BorderBrush="#F1D494" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,8,0"><StackPanel><TextBlock Text="Needs Review" FontWeight="SemiBold" Foreground="#A46700" /><TextBlock Text="18" FontSize="25" FontWeight="Bold" Foreground="#A46700" /></StackPanel></Border>
+                        <Border Grid.Column="2" Background="#FFF1F0" BorderBrush="#F0C1BD" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,8,0"><StackPanel><TextBlock Text="Blocked" FontWeight="SemiBold" Foreground="#B63A30" /><TextBlock Text="4" FontSize="25" FontWeight="Bold" Foreground="#B63A30" /></StackPanel></Border>
+                        <Border Grid.Column="3" Background="#EEF5FF" BorderBrush="#C7D9F3" BorderThickness="1" CornerRadius="10" Padding="14"><StackPanel><TextBlock Text="Proposed Elements" FontWeight="SemiBold" Foreground="#2D67A7" /><TextBlock Text="394" FontSize="25" FontWeight="Bold" Foreground="#2D67A7" /></StackPanel></Border>
+                    </Grid>
+
+                    <Grid Grid.Row="1" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="1.25*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Border Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Margin="0,0,12,0" ClipToBounds="True">
+                            <Grid>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                <DockPanel Margin="16,14"><TextBlock Text="2D source / Revit connection review" Style="{StaticResource SectionTitleStyle}" /></DockPanel>
+                                <Border Grid.Row="1" Background="#F8FAFB" BorderBrush="#E1E7EB" BorderThickness="0,1,0,1">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <Canvas Grid.Column="0" Background="#FCFDFD">
+                                            <Rectangle Canvas.Left="35" Canvas.Top="45" Width="330" Height="300" Stroke="#B8C1C8" StrokeThickness="2" />
+                                            <Line X1="200" Y1="45" X2="200" Y2="345" Stroke="#CCD4DA" />
+                                            <Line X1="35" Y1="190" X2="365" Y2="190" Stroke="#CCD4DA" />
+                                            <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="7" Data="M 70,250 L 330,250 M 200,250 L 200,100" />
+                                            <Path Stroke="{StaticResource CoralBrush}" StrokeThickness="4" Data="M 200,100 L 100,100 M 200,100 L 310,100" />
+                                            <Ellipse Canvas.Left="90" Canvas.Top="90" Width="20" Height="20" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" />
+                                            <Ellipse Canvas.Left="300" Canvas.Top="90" Width="20" Height="20" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" />
+                                            <TextBlock Canvas.Left="50" Canvas.Top="15" Text="INTERPRETED 2D" FontWeight="Bold" />
+                                        </Canvas>
+                                        <Canvas Grid.Column="1" Background="#F3F5F6">
+                                            <Path Fill="#E1E5E8" Stroke="#BBC3C9" Data="M 50,315 L 200,180 L 390,250 L 230,385 Z" />
+                                            <Path Stroke="{StaticResource AccentBrush}" StrokeThickness="12" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M 95,280 L 270,205 L 355,235" />
+                                            <Path Stroke="{StaticResource CoralBrush}" StrokeThickness="7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M 210,230 L 210,120 M 270,205 L 330,150" />
+                                            <Line X1="210" Y1="120" X2="210" Y2="165" Stroke="{StaticResource AccentBrush}" StrokeThickness="5" />
+                                            <Ellipse Canvas.Left="199" Canvas.Top="106" Width="22" Height="22" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" Fill="White" />
+                                            <Line X1="330" Y1="150" X2="330" Y2="110" Stroke="{StaticResource AccentBrush}" StrokeThickness="5" />
+                                            <Ellipse Canvas.Left="319" Canvas.Top="92" Width="22" Height="22" Stroke="{StaticResource VioletBrush}" StrokeThickness="3" Fill="White" />
+                                            <TextBlock Canvas.Left="30" Canvas.Top="15" Text="PROPOSED REVIT MODEL" FontWeight="Bold" />
+                                        </Canvas>
+                                        <Border HorizontalAlignment="Center" Width="38" Height="38" Background="White" BorderBrush="{StaticResource AccentBrush}" BorderThickness="2" CornerRadius="19" VerticalAlignment="Center">
+                                            <TextBlock Text="↔" Foreground="{StaticResource AccentBrush}" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                                <Grid Grid.Row="2" Margin="14">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Verified elements can be created; blocked items remain untouched." Foreground="{StaticResource SoftBrush}" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Content="Export report" />
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="1" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="14">
+                            <Grid>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                <TextBlock Text="Validation issues" Style="{StaticResource SectionTitleStyle}" />
+                                <DataGrid x:Name="review_issue_grid" Grid.Row="1" Margin="0,12,0,0" SelectionMode="Single" SelectionUnit="FullRow">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Status" Binding="{Binding Severity}" Width="90" />
+                                        <DataGridTextColumn Header="Issue" Binding="{Binding Issue}" Width="2*" />
+                                        <DataGridTextColumn Header="Location" Binding="{Binding Location}" Width="1.2*" />
+                                        <DataGridTextColumn Header="Count" Binding="{Binding Count}" Width="65" />
+                                        <DataGridTextColumn Header="Action" Binding="{Binding Action}" Width="110" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <Border Grid.Row="3" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+            <Grid Margin="18,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="9" Height="9" Fill="{StaticResource GreenBrush}" Margin="0,0,8,0" />
+                    <TextBlock x:Name="status_text" Text="Ready" Foreground="{StaticResource SoftBrush}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="close_btn" Content="Close" Margin="0,0,8,0" />
+                    <Button x:Name="back_btn" Content="Back" Margin="0,0,8,0" />
+                    <Button x:Name="next_btn" Content="Continue" Style="{StaticResource PrimaryButtonStyle}" />
+                    <Button x:Name="create_verified_btn" Content="Create Verified" Style="{StaticResource PrimaryButtonStyle}" Visibility="Collapsed" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
