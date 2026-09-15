@@ -1,7 +1,7 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Quick Tag Align"
-        Width="280" Height="94"
+        Width="310" Height="94"
         WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" ShowActivated="False" Topmost="True">
@@ -70,7 +70,7 @@
                 <ColumnDefinition Width="3"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="4"/>
-                <ColumnDefinition Width="64"/>
+                <ColumnDefinition Width="92"/>
                 <ColumnDefinition Width="6"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
@@ -104,6 +104,8 @@
                 <ComboBoxItem Content="LEFT" Tag="Left"/>
                 <ComboBoxItem Content="RIGHT" Tag="Right"/>
                 <ComboBoxItem Content="STACK" Tag="Stack"/>
+                <ComboBoxItem Content="H-ALIGN" Tag="Horizontal"/>
+                <ComboBoxItem Content="SPLIT L/R" Tag="Split"/>
             </ComboBox>
             <Button x:Name="quick_align_tags_btn" Grid.Column="6" Grid.Row="0"
                     Height="46" Style="{StaticResource QuickActionButton}"
@@ -138,7 +140,7 @@
                     <ColumnDefinition Width="4"/>
                     <ColumnDefinition Width="1.25*"/>
                 </Grid.ColumnDefinitions>
-                <Grid Grid.Column="0">
+                <Grid Grid.Column="0" Grid.ColumnSpan="3">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="52"/>
                         <ColumnDefinition Width="3"/>
@@ -149,7 +151,7 @@
                               FontWeight="SemiBold" FontSize="8.5"
                               Foreground="#17212A" Background="#F4F8FB"
                               BorderBrush="#8E78D4" BorderThickness="1"
-                              ToolTip="Choose whether AUTO places tags below or above the sample.">
+                              ToolTip="Choose whether AUTO and extra H-ALIGN tags are placed below or above the sample rows.">
                         <ComboBoxItem Content="BELOW" Tag="Below"/>
                         <ComboBoxItem Content="ABOVE" Tag="Above"/>
                     </ComboBox>
@@ -165,7 +167,7 @@
                     </Button>
                 </Grid>
                 <Button x:Name="quick_zone_tags_btn" Grid.Column="2"
-                        Height="30" Style="{StaticResource QuickActionButton}"
+                        Height="30" Visibility="Collapsed" Style="{StaticResource QuickActionButton}"
                         Background="#168872" BorderBrush="#68DEC2"
                         ToolTip="1) Quét khung chạm text/leader cần dời. 2) Quét vùng trống đích để xếp tag vào.">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">

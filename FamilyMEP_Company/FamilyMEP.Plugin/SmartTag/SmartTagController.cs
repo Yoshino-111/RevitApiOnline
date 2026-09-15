@@ -178,7 +178,6 @@ internal sealed class SmartTagController : IDisposable
         Find<Button>("suggest_tag_zone_btn").Click += (_, _) => SuggestGuidedTagZone(announce: true);
         Find<Button>("pick_tag_zone_btn").Click += (_, _) => PickGuidedTagZone();
         FindQuick<Button>("quick_align_tags_btn").Click += (_, _) => AlignPickedTags();
-        FindQuick<Button>("quick_zone_tags_btn").Click += (_, _) => ArrangeTagsInPickedZone();
         FindQuick<Button>("quick_auto_column_btn").Click += (_, _) => ArrangeTagsAroundReference();
         FindQuick<Button>("quick_restore_smart_tag_btn").Click += (_, _) => RestoreSmartTagWindow();
         FindQuick<WpfThumb>("quick_drag_handle").DragDelta += (_, args) =>
@@ -570,6 +569,16 @@ internal sealed class SmartTagController : IDisposable
         ComboBoxItem? selected = FindQuick<WpfComboBox>(
             "quick_align_edge_combo").SelectedItem as ComboBoxItem;
         string action = selected?.Tag?.ToString() ?? "Left";
+        if (string.Equals(action, "Horizontal", StringComparison.OrdinalIgnoreCase))
+        {
+            AlignPickedTagRowsHorizontally();
+            return;
+        }
+        if (string.Equals(action, "Split", StringComparison.OrdinalIgnoreCase))
+        {
+            SplitPickedTagsAroundDivider();
+            return;
+        }
         bool arrangeStack = string.Equals(
             action,
             "Stack",
@@ -645,31 +654,22 @@ internal sealed class SmartTagController : IDisposable
             });
     }
 
-    private void UpdateManualTagActionUi()
-    {
-        ComboBoxItem? selected = FindQuick<WpfComboBox>(
-            "quick_align_edge_combo").SelectedItem as ComboBoxItem;
-        bool arrangeStack = string.Equals(
-            selected?.Tag?.ToString(),
-            "Stack",
-            StringComparison.OrdinalIgnoreCase);
-        FindQuick<TextBlock>("quick_action_text").Text = arrangeStack
-            ? "ARRANGE TAGS"
-            : "ALIGN TAGS";
-        FindQuick<Button>("quick_align_tags_btn").ToolTip = arrangeStack
-            ? "Pick the top reference tag, select target tags, then click Finish."
-            : "Pick one reference tag, then drag a rectangle across target text/leader lines. Runs immediately after the rectangle.";
-    }
-
-    private void ArrangeTagsInPickedZone()
+    private void AlignPickedTagRowsHorizontally()
     {
         if (_busy || _disposed) return;
 
+        ComboBoxItem? selectedSide = FindQuick<WpfComboBox>(
+            "quick_auto_side_combo").SelectedItem as ComboBoxItem;
+        bool placeExtrasAbove = string.Equals(
+            selectedSide?.Tag?.ToString(),
+            "Above",
+            StringComparison.OrdinalIgnoreCase);
         double rowGapPaperMillimeters = ReadManualTagGapPaperMillimeters();
         SmartTagManualAlignResult? result = null;
         WriteButton.IsEnabled = false;
         Status.Text =
-            "Step 1: drag across tag text or leader lines. Step 2: drag the empty rectangle where those tags must be arranged.";
+            $"Drag reference tags, then target tags. Extra targets will be arranged " +
+            $"{(placeExtrasAbove ? "above" : "below")} the reference rows.";
         Status.Foreground = Brush("#A8B2BC");
         bool keepCompactMode = _smartTagCompactMode;
         _window.Hide();
@@ -677,44 +677,129 @@ internal sealed class SmartTagController : IDisposable
             _quickAlignWindow.Hide();
         NativeWindow.TryActivate(_uiApplication.MainWindowHandle);
         Queue(
-            app => result = SmartTagRevitService.PickAndArrangeTagsInZone(
+            app => result = SmartTagRevitService.PickAndAlignTagRowsHorizontally(
                 app,
-                rowGapPaperMillimeters),
-            "Drag across tag text/leader lines, then mark the destination location. The second rectangle size is not a limit...",
+                rowGapPaperMillimeters,
+                placeExtrasAbove),
+            "Step 1: drag reference tags. Step 2: drag target tags...",
             () =>
             {
-                if (keepCompactMode)
-                {
-                    SyncQuickAlignVisibility();
-                }
-                else
-                {
-                    if (!_window.IsVisible) _window.Show();
-                    _window.Activate();
-                }
+                RestoreAfterQuickAction(keepCompactMode);
                 if (result is null)
                 {
-                    Status.Text = "Zone tag arrangement cancelled; Revit was not changed.";
+                    Status.Text = "Horizontal tag-row alignment cancelled; Revit was not changed.";
                     Status.Foreground = Brush("#A8B2BC");
                     return;
                 }
-
-                _previewTimer.Stop();
-                _layout = null;
-                _analysisReady = false;
-                WriteButton.IsEnabled = false;
-                Overlay.Children.Clear();
-                PreviewImage.Source = LoadBitmap(result.ImageBytes);
-                PreviewMode.Text =
-                    "ACTUAL REVIT TAGS - collected by text/leader crossing and stacked at the picked location";
-                Status.Text =
-                    $"Arranged {result.Aligned} collected tag(s) at the picked location; " +
-                    $"{result.Skipped} skipped. Real text bounds and orthogonal leaders were used.";
-                Status.ToolTip = result.Warnings.Count == 0
-                    ? null
-                    : string.Join(Environment.NewLine, result.Warnings);
-                Status.Foreground = result.Aligned > 0 ? Brush("#7FC5FF") : Brush("#FF8A80");
+                ShowManualQuickResult(
+                    result,
+                    "ACTUAL REVIT TAGS - target rows aligned to reference rows",
+                    $"Aligned {result.Aligned} target tag row(s); {result.Skipped} skipped. " +
+                    $"Extra targets were arranged {(placeExtrasAbove ? "above" : "below")} " +
+                    "with optimized non-crossing leader order.");
             });
+    }
+
+    private void SplitPickedTagsAroundDivider()
+    {
+        if (_busy || _disposed) return;
+
+        SmartTagManualAlignResult? result = null;
+        double rowGapPaperMillimeters = ReadManualTagGapPaperMillimeters();
+        WriteButton.IsEnabled = false;
+        Status.Text =
+            "Drag across the messy tag group first, then click the top and bottom ends of its left/right divider.";
+        Status.Foreground = Brush("#A8B2BC");
+        bool keepCompactMode = _smartTagCompactMode;
+        _window.Hide();
+        if (keepCompactMode && _quickAlignWindow.IsVisible)
+            _quickAlignWindow.Hide();
+        NativeWindow.TryActivate(_uiApplication.MainWindowHandle);
+        Queue(
+            app => result = SmartTagRevitService.PickAndSplitTagsAroundDivider(
+                app,
+                rowGapPaperMillimeters),
+            "Step 1: scan the messy tags. Steps 2-3: click the divider endpoints...",
+            () =>
+            {
+                RestoreAfterQuickAction(keepCompactMode);
+                if (result is null)
+                {
+                    Status.Text = "Left/right split cancelled; Revit was not changed.";
+                    Status.Foreground = Brush("#A8B2BC");
+                    return;
+                }
+                ShowManualQuickResult(
+                    result,
+                    "ACTUAL REVIT TAGS - gathered beside each local host",
+                    $"Gathered {result.Aligned} tag(s) horizontally; {result.Skipped} skipped. " +
+                    "Each tag stayed near its own left/right host; original rows/order were preserved.");
+            });
+    }
+
+    private void RestoreAfterQuickAction(bool keepCompactMode)
+    {
+        if (keepCompactMode)
+        {
+            SyncQuickAlignVisibility();
+        }
+        else
+        {
+            if (!_window.IsVisible) _window.Show();
+            _window.Activate();
+        }
+    }
+
+    private void ShowManualQuickResult(
+        SmartTagManualAlignResult result,
+        string previewMode,
+        string status)
+    {
+        _previewTimer.Stop();
+        _layout = null;
+        _analysisReady = false;
+        WriteButton.IsEnabled = false;
+        Overlay.Children.Clear();
+        PreviewImage.Source = LoadBitmap(result.ImageBytes);
+        PreviewMode.Text = previewMode;
+        Status.Text = status;
+        Status.ToolTip = result.Warnings.Count == 0
+            ? null
+            : string.Join(Environment.NewLine, result.Warnings);
+        Status.Foreground = result.Aligned > 0 ? Brush("#7FC5FF") : Brush("#FF8A80");
+    }
+
+    private void UpdateManualTagActionUi()
+    {
+        ComboBoxItem? selected = FindQuick<WpfComboBox>(
+            "quick_align_edge_combo").SelectedItem as ComboBoxItem;
+        string action = selected?.Tag?.ToString() ?? "Left";
+        bool arrangeStack = string.Equals(
+            action,
+            "Stack",
+            StringComparison.OrdinalIgnoreCase);
+        bool alignHorizontal = string.Equals(
+            action,
+            "Horizontal",
+            StringComparison.OrdinalIgnoreCase);
+        bool split = string.Equals(
+            action,
+            "Split",
+            StringComparison.OrdinalIgnoreCase);
+        FindQuick<TextBlock>("quick_action_text").Text = arrangeStack
+            ? "ARRANGE TAGS"
+            : alignHorizontal
+                ? "ALIGN ROWS"
+                : split
+                        ? "SPLIT TAGS"
+                        : "ALIGN TAGS";
+        FindQuick<Button>("quick_align_tags_btn").ToolTip = arrangeStack
+            ? "Pick the top reference tag, select target tags, then click Finish."
+            : alignHorizontal
+                ? "Drag reference tags, then target tags. Extra targets use the ABOVE/BELOW choice and all leader routes are optimized together."
+                : split
+                        ? "Drag across the messy tags first, then click the top and bottom ends of the divider."
+                        : "Pick one reference tag, then drag a rectangle across target text/leader lines. Runs immediately after the rectangle.";
     }
 
     private void ArrangeTagsAroundReference()
@@ -1858,7 +1943,6 @@ internal sealed class SmartTagController : IDisposable
             enabled && ReadLayoutStyle() == SmartTagLayoutStyle.GuidedZones;
         FindQuick<Button>("quick_align_tags_btn").IsEnabled = enabled;
         FindQuick<Button>("quick_auto_column_btn").IsEnabled = enabled;
-        FindQuick<Button>("quick_zone_tags_btn").IsEnabled = enabled;
         FindQuick<WpfComboBox>("quick_align_edge_combo").IsEnabled = enabled;
         FindQuick<WpfComboBox>("quick_auto_side_combo").IsEnabled = enabled;
         Find<Button>("refresh_btn").IsEnabled = enabled;

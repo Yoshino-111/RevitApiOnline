@@ -29,6 +29,8 @@
              Link="SmartTagArchitectureClearance.cs" />
     <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagManualAlignment.cs"
              Link="SmartTagManualAlignment.cs" />
+    <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagManualAvoidance.cs"
+             Link="SmartTagManualAvoidance.cs" />
     <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagStackRouting.cs"
              Link="SmartTagStackRouting.cs" />
     <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagMepClearance.cs"

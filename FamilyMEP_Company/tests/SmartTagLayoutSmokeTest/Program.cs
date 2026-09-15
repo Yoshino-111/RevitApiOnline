@@ -41,6 +41,73 @@ static bool LeaderEndStaysOnHost(TagLayoutPlacement placement, LayoutTagInput in
     placement.End.V <= input.ElementBounds.MaxV + 1e-8 &&
     (placement.UsesFreeEnd || Math.Abs(placement.End.V - input.Anchor.V) < 1e-8);
 
+static double HorizontalHostGap(TagLayoutPlacement placement, LayoutTagInput input) =>
+    placement.Head.U < placement.End.U
+        ? input.ElementBounds.MinU - placement.TagBounds.MaxU
+        : placement.TagBounds.MinU - input.ElementBounds.MaxU;
+
+Require(SmartTagStackRouting.BuildLeftThenRightPasses(
+        [true, false, true], autoSide: true).SequenceEqual(
+        new bool?[] { false, true }),
+    "Two-sided AUTO must solve and lock Left before routing Right.");
+Require(SmartTagStackRouting.BuildLeftThenRightPasses(
+        [false, false], autoSide: true).SequenceEqual(
+        new bool?[] { null }),
+    "One-sided AUTO must retain the accepted single-pass routing behavior.");
+
+LayoutPoint mixedAboveEnd = SmartTagStackRouting.OffsetMixedSideEndInsideHost(
+    new LayoutPoint(5.0, 5.0),
+    new LayoutRect(4.0, 4.5, 6.0, 5.5),
+    preferredDirection: -1,
+    requestedOffset: 0.2,
+    tolerance: 0.01);
+Require(mixedAboveEnd.V < 5.0 && mixedAboveEnd.V >= 4.5,
+    "Mixed-side AUTO above the sample must offset the endpoint down inside the host to retain a 90-degree leader.");
+LayoutPoint mixedBelowEnd = SmartTagStackRouting.OffsetMixedSideEndInsideHost(
+    new LayoutPoint(5.0, 5.0),
+    new LayoutRect(4.0, 4.5, 6.0, 5.5),
+    preferredDirection: 1,
+    requestedOffset: 0.2,
+    tolerance: 0.01);
+Require(mixedBelowEnd.V > 5.0 && mixedBelowEnd.V <= 5.5,
+    "Mixed-side AUTO below the sample must offset the endpoint up inside the host to retain a 90-degree leader.");
+
+double? avoidUp = SmartTagManualAvoidance.FindNearestVerticalShift(
+    new LayoutRect(0, 0, 4, 1),
+    [new LayoutRect(1, -0.25, 3, 1.25)],
+    [],
+    clearance: 0.1);
+Require(avoidUp is not null && Math.Abs(avoidUp.Value - 1.35) <= 1e-9,
+    "Element-clash avoidance must choose the nearest clear vertical boundary and prefer up on a tie.");
+double? avoidDownAroundReservedTag = SmartTagManualAvoidance.FindNearestVerticalShift(
+    new LayoutRect(0, 0, 4, 1),
+    [new LayoutRect(1, -0.2, 3, 0.8)],
+    [new LayoutRect(0, 0.85, 4, 2.0)],
+    clearance: 0.1);
+Require(avoidDownAroundReservedTag is not null && avoidDownAroundReservedTag.Value < 0,
+    "Element-clash avoidance must consider existing tag reservations when choosing up or down.");
+SmartTagFixedRowRoutePlan fixedRowPlan =
+    SmartTagStackRouting.FindBestOrderForFixedRows(
+        [
+            new SmartTagStackRouteInput(
+                21,
+                new LayoutRect(0, 9.5, 1, 10.5),
+                new LayoutPoint(1, 10),
+                new LayoutPoint(8, 0)),
+            new SmartTagStackRouteInput(
+                22,
+                new LayoutRect(0, -0.5, 1, 0.5),
+                new LayoutPoint(1, 0),
+                new LayoutPoint(8, 10))
+        ],
+        [10.0, 0.0],
+        fixedRoutes: [],
+        clearance: 0.01);
+Require(
+    fixedRowPlan.OrderedKeys.SequenceEqual([22L, 21L]) &&
+    fixedRowPlan.CrossingCount == 0,
+    "Fixed-row leader analysis must reorder inverted host routes before H-ALIGN/AVOID writes them.");
+
 try
 {
     string? replayPath = Environment.GetEnvironmentVariable("SMARTTAG_REPLAY");
@@ -745,6 +812,28 @@ IReadOnlyList<double> leftSideLaneAssignment =
         clearance: 0.05);
 Require(leftSideLaneAssignment.SequenceEqual([4.0, 5.0, 6.0]),
     "A left-side AUTO column must retain the mirrored non-crossing shared endpoint lane order.");
+SmartTagStackRouteInput[] textAwareLaneRoutes =
+[
+    new SmartTagStackRouteInput(2101, new LayoutRect(10, 8.8, 12, 9.2),
+        new LayoutPoint(10, 9), new LayoutPoint(5, 2)),
+    new SmartTagStackRouteInput(2102, new LayoutRect(10, 7.8, 12, 8.2),
+        new LayoutPoint(10, 8), new LayoutPoint(5, 2))
+];
+SmartTagStackRouteInput[] reservedTextBodies =
+[
+    // Its leader is remote and harmless. Only the visible tag body blocks the
+    // otherwise preferred U=6 lane of route 2101.
+    new SmartTagStackRouteInput(2199, new LayoutRect(5.8, 8.4, 6.2, 8.6),
+        new LayoutPoint(20, 20), new LayoutPoint(20, 21))
+];
+IReadOnlyList<double> textAwareLaneAssignment =
+    SmartTagStackRouting.FindBestLaneAssignment(
+        textAwareLaneRoutes,
+        [4.0, 6.0],
+        reservedTextBodies,
+        clearance: 0.05);
+Require(textAwareLaneAssignment.SequenceEqual([4.0, 6.0]),
+    "AUTO lane routing must prefer a clear lane over a shorter/non-crossing leader that cuts through another tag body.");
 Require(SmartTagStackRouting.FindBestLaneAssignment(
         [],
         [5.0],
@@ -1199,6 +1288,11 @@ SmartTagLayoutResult ownerlessV2DuctLayout = SmartTagStandardV2Layout.ComputeClu
     autoSide: true);
 Require(ownerlessV2DuctLayout.Placements.Count == localDuctChanges.Length,
     "Density-selected ownerless Duct changes must remain present in Standard V2 instead of disappearing from the write set.");
+Require(ownerlessV2DuctLayout.Placements.All(placement =>
+        HorizontalHostGap(placement,
+            localDuctChanges.Single(input => input.TagKey == placement.TagKey)) <=
+        Settings().OffsetFromElements * 1.5 + 1e-8),
+    "Every ownerless Standard V2 Duct tag must remain inside its own host-local envelope.");
 
 LayoutTagInput nearbyAccessory = Tag(42, 7.5, anchorU: 3.0) with
 {
@@ -1280,10 +1374,9 @@ SmartTagLayoutResult standardV2Follower = SmartTagStandardV2Layout.ComputeCluste
     autoSide: true,
     initialReservations: [remoteTextCompanion]);
 TagLayoutPlacement standardV2Duct = standardV2Follower.Placements.Single();
-Require(Math.Abs(standardV2Duct.TagBounds.MinU - remoteTextCompanion.TagBounds.MinU) <= 1e-8 &&
-        standardV2Duct.TagBounds.MaxV <= remoteTextCompanion.TagBounds.MinV -
-        Math.Max(standardV2Settings.RowSpacing, standardV2Settings.Clearance) + 1e-8,
-    $"Standard V2 must align a Duct below its nearest fixed DA/AT rail within the full local search width. " +
+Require(Math.Abs(HorizontalHostGap(standardV2Duct, followingDuct) -
+                 standardV2Settings.OffsetFromElements) <= 1e-8,
+    $"Standard V2 must reject a remote DA/AT text rail and keep the Duct immediately outside its own host. " +
     $"Duct={standardV2Duct.TagBounds}; companion={remoteTextCompanion.TagBounds}");
 Require(standardV2Duct.PreferredFollowerAnchorTagKey == 52,
     "Standard V2 must preserve Duct -> DA/AT ownership through preview and actual-family measurement.");
@@ -1315,12 +1408,11 @@ SmartTagLayoutResult localRowRepair = SmartTagStandardV2Layout.ComputeClustered(
     standardBaseline: new SmartTagLayoutResult(
         [farGlobalDuctSeed], 1, 0, farGlobalDuctSeed.TagBounds));
 TagLayoutPlacement localRowDuct = localRowRepair.Placements.Single();
-Require(Math.Abs(localRowDuct.TagBounds.MinU - remoteTextCompanion.TagBounds.MinU) <= 1e-8 &&
+Require(Math.Abs(HorizontalHostGap(localRowDuct, followingDuct) -
+                 standardV2Settings.OffsetFromElements) <= 1e-8 &&
         Math.Abs(localRowDuct.Head.V - followingDuct.Anchor.V) < 1.0 &&
-        localRowDuct.TagBounds.MaxV <= remoteTextCompanion.TagBounds.MinV -
-            Math.Max(standardV2Settings.RowSpacing, standardV2Settings.Clearance) + 1e-8 &&
         localRowDuct.End == farGlobalDuctSeed.End,
-    $"Standard V2 must discard a distant global Standard row, rebuild locally below DA/AT, and retain the Duct host end. " +
+    $"Standard V2 must discard a distant global Standard row and rail, rebuild locally, and retain the Duct host end. " +
     $"actual={localRowDuct}; companion={remoteTextCompanion}");
 
 TagLayoutPlacement standardV2RouteReference = remoteTextCompanion with
@@ -1370,17 +1462,13 @@ TagLayoutPlacement standardV2NearBaseline = standardV2AutoBaseline.Placements
     .Single(item => item.TagKey == 56);
 TagLayoutPlacement standardV2FarBaseline = standardV2AutoBaseline.Placements
     .Single(item => item.TagKey == 57);
-Require(Math.Abs(standardV2FarPlacement.TagBounds.MinU -
-                 standardV2RouteReference.TagBounds.MinU) <= 1e-8 &&
-        Math.Abs(standardV2NearPlacement.TagBounds.MinU -
-                 standardV2RouteReference.TagBounds.MinU) <= 1e-8 &&
-        standardV2NearPlacement.Head.V == standardV2NearBaseline.Head.V &&
-        standardV2FarPlacement.Head.V == standardV2FarBaseline.Head.V &&
-        standardV2NearPlacement.Elbow == standardV2NearBaseline.Elbow &&
-        standardV2FarPlacement.Elbow == standardV2FarBaseline.Elbow &&
+Require(Math.Abs(HorizontalHostGap(standardV2FarPlacement, standardV2FarEnd) -
+                 standardV2RouteSettings.OffsetFromElements) <= 1e-8 &&
+        Math.Abs(HorizontalHostGap(standardV2NearPlacement, standardV2NearEnd) -
+                 standardV2RouteSettings.OffsetFromElements) <= 1e-8 &&
         standardV2NearPlacement.End == standardV2NearBaseline.End &&
         standardV2FarPlacement.End == standardV2FarBaseline.End,
-    "Standard V2 must align Duct text to the DA/AT rail without changing either existing leader route.");
+    "Standard V2 must keep each Duct on its own host-local rail and retain both host endpoints.");
 Require(SmartTagStandardNearHostLayout.CountHardClashes(
         standardV2AutoRoutes.Placements,
         [standardV2RouteReference],
@@ -1454,15 +1542,17 @@ Require(ownedRailResult.Placements.Single(item => item.TagKey == 580) == firstOw
     "Standard V2 must keep the accepted DA/AT sample stack completely unchanged.");
 TagLayoutPlacement firstOwnedDuctResult = ownedRailResult.Placements.Single(item => item.TagKey == 582);
 TagLayoutPlacement secondOwnedDuctResult = ownedRailResult.Placements.Single(item => item.TagKey == 583);
-Require(Math.Abs(firstOwnedDuctResult.TagBounds.MinU - 1.0) <= 1e-8 &&
-        Math.Abs(secondOwnedDuctResult.TagBounds.MinU - 1.0) <= 1e-8 &&
+Require(Math.Abs(HorizontalHostGap(firstOwnedDuctResult, firstOwnedDuct) -
+                 standardV2Settings.OffsetFromElements) <= 1e-8 &&
+        Math.Abs(HorizontalHostGap(secondOwnedDuctResult, secondOwnedDuct) -
+                 standardV2Settings.OffsetFromElements) <= 1e-8 &&
         firstOwnedDuctResult.Head.V == firstOwnedDuctSeed.Head.V &&
         secondOwnedDuctResult.Head.V == secondOwnedDuctSeed.Head.V &&
         firstOwnedDuctResult.Elbow == firstOwnedDuctSeed.Elbow &&
         secondOwnedDuctResult.Elbow == secondOwnedDuctSeed.Elbow &&
         firstOwnedDuctResult.End == firstOwnedDuctSeed.End &&
         secondOwnedDuctResult.End == secondOwnedDuctSeed.End,
-    "Duct followers must join the neighboring DA/AT rail while retaining their Standard rows and leader geometry.");
+    "Duct followers must stay near their hosts while retaining their Standard rows and leader geometry.");
 
 LayoutTagInput boundedDuctInput = Tag(584, 4.6, anchorU: 7.0) with
 {
@@ -1488,11 +1578,12 @@ SmartTagLayoutResult boundedResult = SmartTagStandardV2Layout.ComputeClustered(
     autoSide: true,
     standardBaseline: boundedBaseline);
 TagLayoutPlacement boundedPlacement = boundedResult.Placements.Single(item => item.TagKey == 584);
-Require(Math.Abs(boundedPlacement.TagBounds.MinU - firstOwnedCompanion.TagBounds.MinU) <= 1e-8 &&
+Require(Math.Abs(HorizontalHostGap(boundedPlacement, boundedDuctInput) -
+                 standardV2Settings.OffsetFromElements) <= 1e-8 &&
         boundedPlacement.Head.V == boundedDuctSeed.Head.V &&
         boundedPlacement.Elbow == boundedDuctSeed.Elbow &&
         boundedPlacement.End == boundedDuctSeed.End,
-    "Standard V2 must trust the controller's host-nearest DA/AT ownership while retaining the Duct leader route.");
+    "Standard V2 must retain DA/AT ownership but reject its remote text rail while retaining the Duct leader route.");
 
 var scalableV2Inputs = new List<LayoutTagInput>();
 var scalableV2Seed = new List<TagLayoutPlacement>();
@@ -1537,7 +1628,7 @@ SmartTagLayoutResult scalableV2 = SmartTagStandardV2Layout.ComputeClustered(
 Require(scalableV2.Placements.Select(item => item.TagKey).Order().SequenceEqual(
         scalableV2Inputs.Select(item => item.TagKey).Order()),
     "Standard V2 local batching must retain every tag on a full-view solve.");
-Require(scalableV2.Diagnostic?.StartsWith("Standard V2 local rail align:", StringComparison.Ordinal) == true,
+Require(scalableV2.Diagnostic?.StartsWith("Standard V2 host-local Duct layout:", StringComparison.Ordinal) == true,
     "Standard V2 must use the row-preserving path on a full-view analysis.");
 Require(SmartTagStandardNearHostLayout.CountHardClashes(
         scalableV2.Placements, [], [], new LayoutRect(0.0, 0.0, 50.0, 32.0),

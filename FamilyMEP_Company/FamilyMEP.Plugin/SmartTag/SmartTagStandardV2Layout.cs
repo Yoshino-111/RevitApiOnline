@@ -2,7 +2,8 @@ namespace FamilyMEP.Plugin.SmartTag;
 
 // Isolated Standard experiment requested for field testing. The accepted
 // Standard engine remains untouched. V2 keeps DA/AT and every Duct host end
-// fixed, slides Duct text onto its host-nearest DA/AT rail, and may reorder only
+// fixed, keeps Duct text on a host-local rail (reusing a DA/AT rail only when
+// that rail is also local), and may reorder only
 // a small local Duct row group to untangle orthogonal leaders. A proposal is
 // accepted only when neither hard clashes nor leader clashes increase.
 internal static class SmartTagStandardV2Layout
@@ -61,8 +62,8 @@ internal static class SmartTagStandardV2Layout
         {
             return baseline with
             {
-                Diagnostic = "Standard V2 local rail align: Standard leader rows/endpoints retained; " +
-                    "no Duct tag had a nearby visible DA/AT rail to join."
+                Diagnostic = "Standard V2 host-local Duct layout: Standard leader rows/endpoints retained; " +
+                    "all Duct tags were already inside their local host envelope."
             };
         }
 
@@ -210,6 +211,7 @@ internal static class SmartTagStandardV2Layout
         accepted = RepairAlignedDuctRows(
             accepted,
             movableDucts.Select(item => item.TagKey).ToHashSet(),
+            movableDucts.ToDictionary(item => item.TagKey),
             proposalByKey,
             fixedTags,
             obstacles,
@@ -243,12 +245,12 @@ internal static class SmartTagStandardV2Layout
                            finalPreferredKeys.Contains(item.TagKey))
             .GroupBy(item => item.TagKey)
             .ToDictionary(group => group.Key, group => group.First());
+        Dictionary<long, LayoutTagInput> finalDuctInputs = movableDucts
+            .ToDictionary(item => item.TagKey);
         acceptedDucts = movableDucts.Count(item =>
             finalByKey.TryGetValue(item.TagKey, out TagLayoutPlacement? placement) &&
-            placement.PreferredFollowerAnchorTagKey != 0 &&
-            finalAnchors.TryGetValue(placement.PreferredFollowerAnchorTagKey,
-                out TagLayoutPlacement? anchor) &&
-            Math.Abs(placement.TagBounds.MinU - anchor.TagBounds.MinU) <= 1e-7);
+            IsHostLocalRail(finalDuctInputs[item.TagKey], placement.TagBounds,
+                placement.Head.U < placement.End.U, settings));
         reorderedDucts = movableDucts.Count(item =>
             finalByKey.TryGetValue(item.TagKey, out TagLayoutPlacement? placement) &&
             baselineByKey.TryGetValue(item.TagKey, out TagLayoutPlacement? original) &&
@@ -267,8 +269,8 @@ internal static class SmartTagStandardV2Layout
         SmartTagLayoutResult result = ResultFrom(accepted, frame);
         return result with
         {
-            Diagnostic = $"Standard V2 local rail align: {acceptedDucts}/{movableDucts.Count} " +
-                $"Duct tag(s) joined {acceptedGroups}/{batches.Count} local DA/AT rail group(s); " +
+            Diagnostic = $"Standard V2 host-local Duct layout: {acceptedDucts}/{movableDucts.Count} " +
+                $"Duct tag(s) kept near their hosts; {acceptedGroups}/{batches.Count} local DA/AT rail group(s) reused; " +
                 $"{reorderedDucts} local row(s) reordered, {exactRailSnaps} final rail snap(s), " +
                 $"{leaderOrderSwaps} safe row swap(s); " +
                 $"hard clashes {standardHard} -> {currentHard}, " +
@@ -491,6 +493,7 @@ internal static class SmartTagStandardV2Layout
     private static List<TagLayoutPlacement> RepairAlignedDuctRows(
         IReadOnlyList<TagLayoutPlacement> source,
         IReadOnlySet<long> ductKeys,
+        IReadOnlyDictionary<long, LayoutTagInput> ductInputs,
         IReadOnlyDictionary<long, TagLayoutPlacement> horizontalByKey,
         IReadOnlyList<TagLayoutPlacement> fixedTags,
         IReadOnlyList<LayoutObstacle> obstacles,
@@ -530,6 +533,7 @@ internal static class SmartTagStandardV2Layout
                 if (index < 0) continue;
                 TagLayoutPlacement current = result[index];
                 TagLayoutPlacement horizontal = horizontalByKey[key];
+                LayoutTagInput ductInput = ductInputs[key];
                 List<TagLayoutPlacement> reservations = ReservationsFor(key);
                 int currentHard = SmartTagStandardNearHostLayout.CountHardClashes(
                     [current], reservations, obstacles, frame, settings.Clearance);
@@ -563,7 +567,8 @@ internal static class SmartTagStandardV2Layout
                     double shiftU = anchor.TagBounds.MinU - horizontal.TagBounds.MinU;
                     LayoutRect shiftedBounds = Shift(horizontal.TagBounds, shiftU, 0.0);
                     if (shiftedBounds.MinU < frame.MinU ||
-                        shiftedBounds.MaxU > frame.MaxU)
+                        shiftedBounds.MaxU > frame.MaxU ||
+                        !IsHostLocalRail(ductInput, shiftedBounds, currentLeft, settings))
                         continue;
                     templates.Add(horizontal with
                     {
@@ -959,7 +964,6 @@ internal static class SmartTagStandardV2Layout
                            preferredCompanionKeys.Contains(item.TagKey))
             .GroupBy(item => item.TagKey)
             .ToDictionary(group => group.Key, group => group.First());
-        if (companions.Count == 0) return baseline;
 
         double followRadius = SmartTagLayoutEngine.NearbyFollowRadius(settings);
         double visibleRailRadius = followRadius;
@@ -982,10 +986,32 @@ internal static class SmartTagStandardV2Layout
                 .ThenBy(item => Distance(item.End, input.ElementBounds))
                 .ThenBy(item => item.TagKey)
                 .FirstOrDefault();
-            if (companion is null) continue;
+            if (companion is null)
+            {
+                // Ownerless Duct changes must not fall back to Standard's
+                // full-view column. Keep the established row but pull the
+                // text horizontally to the nearest edge of its own host.
+                bool placeLeft = current.Head.U < current.End.U;
+                double localRail = HostLocalRail(input, current.TagBounds.Width,
+                    placeLeft, settings);
+                double shiftU = localRail - current.TagBounds.MinU;
+                bool usesElbow = Math.Abs(current.Head.V - current.End.V) > 1e-7;
+                placements[placements.FindIndex(item => item.TagKey == input.TagKey)] = current with
+                {
+                    Head = current.Head with { U = current.Head.U + shiftU },
+                    TagBounds = Shift(current.TagBounds, shiftU, 0.0),
+                    Elbow = usesElbow
+                        ? new LayoutPoint(current.End.U, current.Head.V)
+                        : current.End,
+                    UsesElbow = usesElbow,
+                    UsesFreeEnd = usesElbow,
+                    HasClash = false
+                };
+                continue;
+            }
             assignments.Add((input, companion));
         }
-        if (assignments.Count == 0) return baseline;
+        if (assignments.Count == 0) return ResultFrom(placements, baseline.ColumnBounds);
 
         double railMergeDistance = Math.Max(
             settings.Clearance * 2.0,
@@ -1013,7 +1039,7 @@ internal static class SmartTagStandardV2Layout
         foreach (List<(LayoutTagInput Input, TagLayoutPlacement Companion)> group in followerGroups)
         {
             double[] visibleRails = group.Select(item => item.Companion.TagBounds.MinU).ToArray();
-            double targetRail = visibleRails
+            double sharedRail = visibleRails
                 .Distinct()
                 .OrderBy(rail => visibleRails.Sum(other => Math.Abs(other - rail)))
                 .ThenBy(rail => rail)
@@ -1023,6 +1049,22 @@ internal static class SmartTagStandardV2Layout
                 int index = placements.FindIndex(item => item.TagKey == follower.Input.TagKey);
                 if (index < 0) continue;
                 TagLayoutPlacement current = placements[index];
+                bool placeLeft = follower.Companion.Head.U < follower.Companion.End.U;
+                // A DA/AT tag can be attached to a nearby host while its text
+                // lives at the far end of a long leader. Following that text
+                // rail made Standard V2 send otherwise local Duct tags across
+                // the view. Reuse the shared rail only while the Duct text
+                // remains within the small host-local envelope; otherwise put
+                // it immediately outside its own host on the same side.
+                double targetRail = IsHostLocalRail(
+                        follower.Input,
+                        Shift(current.TagBounds,
+                            sharedRail - current.TagBounds.MinU, 0.0),
+                        placeLeft,
+                        settings)
+                    ? sharedRail
+                    : HostLocalRail(follower.Input, current.TagBounds.Width,
+                        placeLeft, settings);
                 double shiftU = targetRail - current.TagBounds.MinU;
                 // Standard's global column may already have assigned this
                 // sparse Duct a row many metres away. That old row must not be
@@ -1063,6 +1105,34 @@ internal static class SmartTagStandardV2Layout
 
     private static LayoutRect Shift(LayoutRect bounds, double du, double dv) =>
         new(bounds.MinU + du, bounds.MinV + dv, bounds.MaxU + du, bounds.MaxV + dv);
+
+    private static double HostLocalRail(
+        LayoutTagInput input,
+        double tagWidth,
+        bool placeLeft,
+        SmartTagLayoutSettings settings)
+    {
+        double gap = Math.Max(settings.OffsetFromElements, settings.Clearance * 2.0);
+        return placeLeft
+            ? input.ElementBounds.MinU - gap - tagWidth
+            : input.ElementBounds.MaxU + gap;
+    }
+
+    private static bool IsHostLocalRail(
+        LayoutTagInput input,
+        LayoutRect tagBounds,
+        bool placeLeft,
+        SmartTagLayoutSettings settings)
+    {
+        double gap = placeLeft
+            ? input.ElementBounds.MinU - tagBounds.MaxU
+            : tagBounds.MinU - input.ElementBounds.MaxU;
+        double maximumGap = Math.Max(
+            settings.OffsetFromElements * 1.5,
+            settings.Clearance * 4.0);
+        return gap >= settings.Clearance - 1e-7 &&
+               gap <= maximumGap + 1e-7;
+    }
 
     private static double Distance(LayoutPoint point, LayoutRect bounds)
     {

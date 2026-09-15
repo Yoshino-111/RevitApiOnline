@@ -17,8 +17,239 @@ internal sealed record SmartTagAutoColumnRoutePlan(
     int CrossingCount,
     double TotalLength);
 
+internal sealed record SmartTagFixedRowRoutePlan(
+    IReadOnlyList<long> OrderedKeys,
+    int CrossingCount,
+    double TotalLength);
+
 internal static class SmartTagStackRouting
 {
+    internal static LayoutPoint OffsetMixedSideEndInsideHost(
+        LayoutPoint end,
+        LayoutRect hostBounds,
+        int preferredDirection,
+        double requestedOffset,
+        double tolerance)
+    {
+        if (preferredDirection == 0 || requestedOffset <= tolerance)
+            return end;
+        double inset = Math.Min(
+            requestedOffset * 0.1,
+            Math.Max(0.0, hostBounds.Height * 0.05));
+        double lower = hostBounds.MinV + inset;
+        double upper = hostBounds.MaxV - inset;
+        if (upper <= lower + tolerance) return end;
+
+        int preferred = Math.Sign(preferredDirection);
+        double preferredAvailable = preferred > 0
+            ? upper - end.V
+            : end.V - lower;
+        int direction = preferredAvailable >= tolerance
+            ? preferred
+            : -preferred;
+        double available = direction > 0
+            ? upper - end.V
+            : end.V - lower;
+        double offset = Math.Min(requestedOffset, Math.Max(0.0, available));
+        return offset > tolerance
+            ? end with { V = end.V + direction * offset }
+            : end;
+    }
+
+    internal static IReadOnlyList<bool?> BuildLeftThenRightPasses(
+        IEnumerable<bool> rightSides,
+        bool autoSide)
+    {
+        if (!autoSide) return [null];
+        bool[] sides = rightSides.Distinct().ToArray();
+        return sides.Contains(false) && sides.Contains(true)
+            ? [false, true]
+            : [null];
+    }
+
+    internal static SmartTagFixedRowRoutePlan FindBestOrderForFixedRows(
+        IReadOnlyList<SmartTagStackRouteInput> movable,
+        IReadOnlyList<double> rowsTopToBottom,
+        IReadOnlyList<SmartTagStackRouteInput>? fixedRoutes,
+        double clearance)
+    {
+        if (movable.Count != rowsTopToBottom.Count)
+            throw new ArgumentException(
+                "Fixed-row count must match the movable tag count.");
+        if (movable.Count == 0)
+            return new SmartTagFixedRowRoutePlan([], 0, 0.0);
+
+        double[] rows = rowsTopToBottom.OrderByDescending(value => value).ToArray();
+        SmartTagStackRouteInput[] fixedItems = fixedRoutes?.ToArray() ?? [];
+        SmartTagStackRouteInput[]? best = null;
+        (int Crossings, double Length, double Travel)? bestScore = null;
+
+        if (movable.Count <= 8)
+        {
+            var used = new bool[movable.Count];
+            var order = new int[movable.Count];
+            Search(0);
+
+            void Search(int depth)
+            {
+                if (depth == movable.Count)
+                {
+                    Consider(order.Select(index => movable[index]).ToArray());
+                    return;
+                }
+                for (int index = 0; index < movable.Count; index++)
+                {
+                    if (used[index]) continue;
+                    used[index] = true;
+                    order[depth] = index;
+                    Search(depth + 1);
+                    used[index] = false;
+                }
+            }
+        }
+        else
+        {
+            IEnumerable<SmartTagStackRouteInput>[] seeds =
+            [
+                movable.OrderByDescending(item => item.End.V).ThenBy(item => item.End.U),
+                movable.OrderByDescending(item => item.End.V).ThenByDescending(item => item.End.U),
+                movable.OrderByDescending(item => item.Head.V).ThenBy(item => item.Key),
+                movable.OrderBy(item => item.Key)
+            ];
+            foreach (IEnumerable<SmartTagStackRouteInput> seedSource in seeds)
+            {
+                SmartTagStackRouteInput[] current = seedSource.ToArray();
+                var currentScore = Score(current);
+                int maximumPasses = Math.Min(16, Math.Max(4, current.Length / 2));
+                for (int pass = 0; pass < maximumPasses; pass++)
+                {
+                    SmartTagStackRouteInput[]? improved = null;
+                    var improvedScore = currentScore;
+                    if (current.Length <= 28)
+                    {
+                        for (int first = 0; first < current.Length; first++)
+                        for (int second = first + 1; second < current.Length; second++)
+                        {
+                            SmartTagStackRouteInput[] candidate = current.ToArray();
+                            (candidate[first], candidate[second]) =
+                                (candidate[second], candidate[first]);
+                            var candidateScore = Score(candidate);
+                            if (!Better(candidateScore, improvedScore)) continue;
+                            improved = candidate;
+                            improvedScore = candidateScore;
+                        }
+                    }
+                    else
+                    {
+                        for (int index = 0; index + 1 < current.Length; index++)
+                        {
+                            SmartTagStackRouteInput[] candidate = current.ToArray();
+                            (candidate[index], candidate[index + 1]) =
+                                (candidate[index + 1], candidate[index]);
+                            var candidateScore = Score(candidate);
+                            if (!Better(candidateScore, improvedScore)) continue;
+                            improved = candidate;
+                            improvedScore = candidateScore;
+                        }
+                    }
+                    if (improved is null) break;
+                    current = improved;
+                    currentScore = improvedScore;
+                    if (currentScore.Crossings == 0) break;
+                }
+                Consider(current);
+                if (bestScore is { Crossings: 0 }) break;
+            }
+        }
+
+        return new SmartTagFixedRowRoutePlan(
+            best!.Select(item => item.Key).ToArray(),
+            bestScore!.Value.Crossings,
+            bestScore.Value.Length);
+
+        void Consider(SmartTagStackRouteInput[] candidate)
+        {
+            var score = Score(candidate);
+            if (bestScore is not null && !Better(score, bestScore.Value)) return;
+            best = candidate;
+            bestScore = score;
+        }
+
+        (int Crossings, double Length, double Travel) Score(
+            IReadOnlyList<SmartTagStackRouteInput> order)
+        {
+            var routes = new List<(PredictedRoute Route, bool Movable)>(
+                order.Count + fixedItems.Length);
+            double travel = 0.0;
+            for (int index = 0; index < order.Count; index++)
+            {
+                SmartTagStackRouteInput item = order[index];
+                double row = rows[index];
+                var attachment = new LayoutPoint(item.Head.U, row);
+                var elbow = new LayoutPoint(item.End.U, row);
+                routes.Add((new PredictedRoute(
+                    new LayoutSegment(attachment, elbow),
+                    new LayoutSegment(elbow, item.End)), true));
+                travel += Math.Abs(row - item.Head.V);
+            }
+            foreach (SmartTagStackRouteInput item in fixedItems)
+            {
+                var elbow = new LayoutPoint(item.End.U, item.Head.V);
+                routes.Add((new PredictedRoute(
+                    new LayoutSegment(item.Head, elbow),
+                    new LayoutSegment(elbow, item.End)), false));
+            }
+
+            int crossings = 0;
+            double safeClearance = Math.Max(clearance, 1e-8);
+            for (int first = 0; first < routes.Count; first++)
+            for (int second = first + 1; second < routes.Count; second++)
+            {
+                if (!routes[first].Movable && !routes[second].Movable) continue;
+                PredictedRoute firstRoute = routes[first].Route;
+                PredictedRoute secondRoute = routes[second].Route;
+                if (OrthogonalSegmentsClash(
+                        firstRoute.Horizontal,
+                        secondRoute.Vertical,
+                        safeClearance))
+                    crossings++;
+                if (OrthogonalSegmentsClash(
+                        secondRoute.Horizontal,
+                        firstRoute.Vertical,
+                        safeClearance))
+                    crossings++;
+                if (ParallelSegmentsClash(
+                        firstRoute.Vertical,
+                        secondRoute.Vertical,
+                        vertical: true,
+                        safeClearance))
+                    crossings++;
+                if (ParallelSegmentsClash(
+                        firstRoute.Horizontal,
+                        secondRoute.Horizontal,
+                        vertical: false,
+                        safeClearance))
+                    crossings++;
+            }
+            double length = routes
+                .Where(item => item.Movable)
+                .Sum(item => SegmentLength(item.Route.Horizontal) +
+                             SegmentLength(item.Route.Vertical));
+            return (crossings, length, travel);
+        }
+
+        static bool Better(
+            (int Crossings, double Length, double Travel) candidate,
+            (int Crossings, double Length, double Travel) current)
+        {
+            if (candidate.Crossings != current.Crossings)
+                return candidate.Crossings < current.Crossings;
+            if (Math.Abs(candidate.Length - current.Length) > 1e-9)
+                return candidate.Length < current.Length;
+            return candidate.Travel < current.Travel - 1e-9;
+        }
+    }
+
     internal static double GetVisibleLeftEdge(
         LayoutRect bodyBounds,
         LayoutPoint insertion,
@@ -340,7 +571,7 @@ internal static class SmartTagStackRouting
                 var beam = new List<(SmartTagStackRouteInput[] Sequence,
                     ulong Used, AutoRouteScore Score)>
                 {
-                    ([], 0UL, new AutoRouteScore(0, 0, 0.0))
+                    ([], 0UL, new AutoRouteScore(0, 0, 0, 0.0))
                 };
                 for (int depth = 0; depth < targets.Count; depth++)
                 {
@@ -362,7 +593,8 @@ internal static class SmartTagStackRouting
                             Score(scoreOrder, scoreRank)));
                     }
                     beam = next
-                        .OrderBy(item => item.Score.PhysicalClashes)
+                        .OrderBy(item => item.Score.TextClashes)
+                        .ThenBy(item => item.Score.PhysicalClashes)
                         .ThenBy(item => item.Score.OrderInversions)
                         .ThenBy(item => item.Score.Length)
                         .ThenBy(item => item.Sequence[^1].Key)
@@ -399,7 +631,8 @@ internal static class SmartTagStackRouting
                         : Math.Min(8, Math.Max(2, current.Length / 3));
                     for (int pass = 0; pass < maximumPasses; pass++)
                     {
-                        if (currentScore.PhysicalClashes == 0 &&
+                        if (currentScore.TextClashes == 0 &&
+                            currentScore.PhysicalClashes == 0 &&
                             currentScore.OrderInversions == 0)
                             break;
                         SmartTagStackRouteInput[]? bestCandidate = null;
@@ -460,7 +693,8 @@ internal static class SmartTagStackRouting
                     }
                     Consider(current, rank);
                 }
-                if (bestScore is { PhysicalClashes: 0, OrderInversions: 0 }) break;
+                if (bestScore is
+                    { TextClashes: 0, PhysicalClashes: 0, OrderInversions: 0 }) break;
             }
         }
         return best!;
@@ -501,7 +735,10 @@ internal static class SmartTagStackRouting
             IReadOnlyList<SmartTagStackRouteInput> order,
             int referenceRank)
         {
-            var routes = new List<PredictedRoute>(order.Count + 1)
+            var routes = new List<(
+                long Key,
+                LayoutRect Bounds,
+                PredictedRoute Route)>(order.Count + 1)
             {
                 CreateFixedRoute(reference)
             };
@@ -525,60 +762,99 @@ internal static class SmartTagStackRouting
             int physicalClashes = 0;
             int orderInversions = 0;
             double routeClearance = Math.Max(rowGap * 0.35, 1e-8);
+            int textClashes = 0;
+            for (int routeIndex = 0; routeIndex < routes.Count; routeIndex++)
+            for (int bodyIndex = 0; bodyIndex < routes.Count; bodyIndex++)
+            {
+                if (routeIndex == bodyIndex ||
+                    routes[routeIndex].Key == routes[bodyIndex].Key)
+                {
+                    continue;
+                }
+                PredictedRoute route = routes[routeIndex].Route;
+                LayoutRect body = routes[bodyIndex].Bounds;
+                if (SegmentIntersectsBody(route.Horizontal, body, routeClearance) ||
+                    SegmentIntersectsBody(route.Vertical, body, routeClearance))
+                {
+                    textClashes++;
+                }
+            }
             for (int first = 0; first < routes.Count; first++)
             {
                 for (int second = first + 1; second < routes.Count; second++)
                 {
                     if (OrthogonalSegmentsClash(
-                            routes[first].Horizontal,
-                            routes[second].Vertical,
+                            routes[first].Route.Horizontal,
+                            routes[second].Route.Vertical,
                             routeClearance))
                         physicalClashes++;
                     if (OrthogonalSegmentsClash(
-                            routes[second].Horizontal,
-                            routes[first].Vertical,
+                            routes[second].Route.Horizontal,
+                            routes[first].Route.Vertical,
                             routeClearance))
                         physicalClashes++;
                     if (ParallelSegmentsClash(
-                            routes[first].Vertical,
-                            routes[second].Vertical,
+                            routes[first].Route.Vertical,
+                            routes[second].Route.Vertical,
                             vertical: true,
                             routeClearance))
                         physicalClashes++;
                     if (ParallelSegmentsClash(
-                            routes[first].Horizontal,
-                            routes[second].Horizontal,
+                            routes[first].Route.Horizontal,
+                            routes[second].Route.Horizontal,
                             vertical: false,
                             routeClearance))
                         physicalClashes++;
-                    if (RouteOrderIsInverted(routes[first], routes[second]))
+                    if (RouteOrderIsInverted(
+                            routes[first].Route,
+                            routes[second].Route))
                         orderInversions++;
                 }
             }
             double length = routes.Sum(route =>
-                SegmentLength(route.Horizontal) + SegmentLength(route.Vertical));
-            return new AutoRouteScore(physicalClashes, orderInversions, length);
+                SegmentLength(route.Route.Horizontal) +
+                SegmentLength(route.Route.Vertical));
+            return new AutoRouteScore(
+                textClashes,
+                physicalClashes,
+                orderInversions,
+                length);
         }
 
-        PredictedRoute CreateFixedRoute(SmartTagStackRouteInput item)
+        (long Key, LayoutRect Bounds, PredictedRoute Route) CreateFixedRoute(
+            SmartTagStackRouteInput item)
         {
             var elbow = new LayoutPoint(item.End.U, item.Head.V);
-            return new PredictedRoute(
-                new LayoutSegment(item.Head, elbow),
-                new LayoutSegment(elbow, item.End));
+            return (
+                item.Key,
+                item.Bounds,
+                new PredictedRoute(
+                    new LayoutSegment(item.Head, elbow),
+                    new LayoutSegment(elbow, item.End)));
         }
 
-        PredictedRoute CreateMovedRoute(SmartTagStackRouteInput item, double desiredCenterV)
+        (long Key, LayoutRect Bounds, PredictedRoute Route) CreateMovedRoute(
+            SmartTagStackRouteInput item,
+            double desiredCenterV)
         {
             double currentCenterV = (item.Bounds.MinV + item.Bounds.MaxV) * 0.5;
             double targetEdge = alignLeftEdge ? item.Bounds.MinU : item.Bounds.MaxU;
+            double shiftU = referenceEdge - targetEdge;
+            double shiftV = desiredCenterV - currentCenterV;
             var head = new LayoutPoint(
-                item.Head.U + referenceEdge - targetEdge,
-                item.Head.V + desiredCenterV - currentCenterV);
+                item.Head.U + shiftU,
+                item.Head.V + shiftV);
             var elbow = new LayoutPoint(item.End.U, head.V);
-            return new PredictedRoute(
-                new LayoutSegment(head, elbow),
-                new LayoutSegment(elbow, item.End));
+            return (
+                item.Key,
+                new LayoutRect(
+                    item.Bounds.MinU + shiftU,
+                    item.Bounds.MinV + shiftV,
+                    item.Bounds.MaxU + shiftU,
+                    item.Bounds.MaxV + shiftV),
+                new PredictedRoute(
+                    new LayoutSegment(head, elbow),
+                    new LayoutSegment(elbow, item.End)));
         }
     }
 
@@ -692,7 +968,11 @@ internal static class SmartTagStackRouting
 
         LaneScore Score(IReadOnlyList<double> assignment)
         {
-            var routes = new List<(PredictedRoute Route, bool Movable)>(
+            var routes = new List<(
+                PredictedRoute Route,
+                bool Movable,
+                long Key,
+                LayoutRect Bounds)>(
                 movableRoutes.Count + fixedItems.Length);
             double movement = 0.0;
             for (int index = 0; index < movableRoutes.Count; index++)
@@ -703,7 +983,7 @@ internal static class SmartTagStackRouting
                 var end = new LayoutPoint(lane, item.End.V);
                 routes.Add((new PredictedRoute(
                     new LayoutSegment(item.Head, elbow),
-                    new LayoutSegment(elbow, end)), true));
+                    new LayoutSegment(elbow, end)), true, item.Key, item.Bounds));
                 movement += Math.Abs(lane - item.End.U);
             }
             foreach (SmartTagStackRouteInput item in fixedItems)
@@ -711,7 +991,30 @@ internal static class SmartTagStackRouting
                 var elbow = new LayoutPoint(item.End.U, item.Head.V);
                 routes.Add((new PredictedRoute(
                     new LayoutSegment(item.Head, elbow),
-                    new LayoutSegment(elbow, item.End)), false));
+                    new LayoutSegment(elbow, item.End)), false, item.Key, item.Bounds));
+            }
+
+            int textClashes = 0;
+            for (int routeIndex = 0; routeIndex < routes.Count; routeIndex++)
+            {
+                var candidate = routes[routeIndex];
+                if (!candidate.Movable) continue;
+                for (int bodyIndex = 0; bodyIndex < routes.Count; bodyIndex++)
+                {
+                    var body = routes[bodyIndex];
+                    if (body.Key == candidate.Key) continue;
+                    if (SegmentIntersectsBody(
+                            candidate.Route.Horizontal,
+                            body.Bounds,
+                            clearance) ||
+                        SegmentIntersectsBody(
+                            candidate.Route.Vertical,
+                            body.Bounds,
+                            clearance))
+                    {
+                        textClashes++;
+                    }
+                }
             }
 
             int clashes = 0;
@@ -738,7 +1041,7 @@ internal static class SmartTagStackRouting
                 .Where(item => item.Movable)
                 .Sum(item => SegmentLength(item.Route.Horizontal) +
                              SegmentLength(item.Route.Vertical));
-            return new LaneScore(clashes, movement, length);
+            return new LaneScore(textClashes, clashes, movement, length);
         }
     }
 
@@ -751,6 +1054,8 @@ internal static class SmartTagStackRouting
 
     private static bool IsBetterAuto(AutoRouteScore candidate, AutoRouteScore current)
     {
+        if (candidate.TextClashes != current.TextClashes)
+            return candidate.TextClashes < current.TextClashes;
         // A real segment intersection is always worse than a non-monotonic
         // host order. Some one-elbow routes can only avoid a crossing by
         // placing a farther endpoint one row earlier; host order is therefore
@@ -764,11 +1069,35 @@ internal static class SmartTagStackRouting
 
     private static bool IsBetterLane(LaneScore candidate, LaneScore current)
     {
+        // A leader crossing visible tag text is never an acceptable shortcut.
+        // Resolve those collisions before comparing leader/leader clashes or
+        // endpoint travel, even when the clear lane is slightly farther away.
+        if (candidate.TextClashes != current.TextClashes)
+            return candidate.TextClashes < current.TextClashes;
         if (candidate.PhysicalClashes != current.PhysicalClashes)
             return candidate.PhysicalClashes < current.PhysicalClashes;
         if (Math.Abs(candidate.EndpointMovement - current.EndpointMovement) > 1e-9)
             return candidate.EndpointMovement < current.EndpointMovement;
         return candidate.Length < current.Length - 1e-9;
+    }
+
+    private static bool SegmentIntersectsBody(
+        LayoutSegment segment,
+        LayoutRect bounds,
+        double clearance)
+    {
+        double minU = bounds.MinU - clearance;
+        double maxU = bounds.MaxU + clearance;
+        double minV = bounds.MinV - clearance;
+        double maxV = bounds.MaxV + clearance;
+        double segmentMinU = Math.Min(segment.Start.U, segment.End.U);
+        double segmentMaxU = Math.Max(segment.Start.U, segment.End.U);
+        double segmentMinV = Math.Min(segment.Start.V, segment.End.V);
+        double segmentMaxV = Math.Max(segment.Start.V, segment.End.V);
+        return segmentMaxU >= minU &&
+               segmentMinU <= maxU &&
+               segmentMaxV >= minV &&
+               segmentMinV <= maxV;
     }
 
     private static bool HorizontalCrossesVertical(
@@ -849,11 +1178,13 @@ internal static class SmartTagStackRouting
     private readonly record struct RouteScore(int Crossings, double Length);
 
     private readonly record struct AutoRouteScore(
+        int TextClashes,
         int PhysicalClashes,
         int OrderInversions,
         double Length);
 
     private readonly record struct LaneScore(
+        int TextClashes,
         int PhysicalClashes,
         double EndpointMovement,
         double Length);

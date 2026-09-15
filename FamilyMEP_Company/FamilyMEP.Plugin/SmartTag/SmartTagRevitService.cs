@@ -128,6 +128,7 @@ internal static class SmartTagRevitService
     private sealed record LeaderLaneRoute(
         IndependentTag Tag,
         Reference Reference,
+        LayoutRect BodyBounds,
         LayoutPoint Head,
         LayoutPoint End,
         double HostWidth,
@@ -306,6 +307,1157 @@ internal static class SmartTagRevitService
         {
             return null;
         }
+    }
+
+    public static SmartTagManualAlignResult? PickAndAvoidSelectedElementTagClashes(
+        UIApplication application,
+        double clearancePaperMillimeters = 1.0)
+    {
+        UIDocument uidoc = application.ActiveUIDocument
+            ?? throw new InvalidOperationException("Open a Revit project first.");
+        Document document = uidoc.Document;
+        View view = document.ActiveView;
+        XYZ right = view.RightDirection.Normalize();
+        XYZ up = view.UpDirection.Normalize();
+        IList<Reference> picks;
+        LayoutRect tagZone;
+        try
+        {
+            picks = uidoc.Selection.PickObjects(
+                ObjectType.Element,
+                new ClashElementSelectionFilter(),
+                "AVOID step 1/2: select model element(s) clashing with tags, then click Finish.");
+            tagZone = ProjectPickedBox(
+                uidoc.Selection.PickBox(
+                    PickBoxStyle.Crossing,
+                    "AVOID step 2/2: drag across the tag text/leader lines to repair."),
+                right,
+                up);
+        }
+        catch (Autodesk.Revit.Exceptions.OperationCanceledException)
+        {
+            return null;
+        }
+
+        List<Element> selectedElements = picks
+            .Select(document.GetElement)
+            .Where(element => element is not null)
+            .Select(element => element!)
+            .GroupBy(element => element.Id.Value)
+            .Select(group => group.First())
+            .ToList();
+        if (selectedElements.Count == 0)
+            throw new InvalidOperationException("No model elements were selected.");
+
+        var obstacleBounds = new List<LayoutRect>();
+        foreach (Element element in selectedElements)
+        {
+            try
+            {
+                BoundingBoxXYZ? box = element.get_BoundingBox(view) ??
+                                      element.get_BoundingBox(null);
+                if (box is not null) obstacleBounds.Add(ProjectBox(box, right, up));
+            }
+            catch
+            {
+                // Other selected elements with valid view bounds remain usable.
+            }
+        }
+        if (obstacleBounds.Count == 0)
+            throw new InvalidOperationException(
+                "The selected elements have no visible bounds in the active view.");
+
+        List<IndependentTag> visibleTags = new FilteredElementCollector(document, view.Id)
+            .OfClass(typeof(IndependentTag))
+            .Cast<IndependentTag>()
+            .Where(tag => !tag.IsHidden(view))
+            .ToList();
+        var warnings = new List<string>();
+        (List<IndependentTag> selectedTags, _) = CollectTagsTouchedByRectangle(
+            document,
+            view,
+            tagZone,
+            right,
+            up,
+            warnings);
+        if (selectedTags.Count == 0)
+            throw new InvalidOperationException(
+                "The AVOID scan rectangle did not touch any tag text or leader line.");
+        HashSet<long> selectedTagIds = selectedTags
+            .Select(tag => tag.Id.Value)
+            .ToHashSet();
+        Dictionary<long, LayoutRect> tagBounds = MeasureTagTextBounds(
+            document,
+            view,
+            visibleTags,
+            right,
+            up,
+            warnings,
+            "FamilyMEP - Measure Tags For Element Clash Avoidance");
+        NormalizeAutoBodyBounds(
+            visibleTags,
+            tagBounds,
+            view,
+            right,
+            up,
+            warnings,
+            reportAdjustments: false);
+        double clearance = Math.Max(0.0, clearancePaperMillimeters) *
+                           Math.Max(1, view.Scale) / 304.8;
+        List<IndependentTag> clashingTags = selectedTags
+            .Where(tag => tagBounds.TryGetValue(tag.Id.Value, out LayoutRect bounds) &&
+                          obstacleBounds.Any(obstacle =>
+                              bounds.Intersects(obstacle.Expand(clearance))))
+            .OrderByDescending(tag =>
+                (tagBounds[tag.Id.Value].MinV + tagBounds[tag.Id.Value].MaxV) * 0.5)
+            .ToList();
+        Dictionary<long, LayoutRect> originalSelectedBounds = selectedTags
+            .Where(tag => tagBounds.ContainsKey(tag.Id.Value))
+            .ToDictionary(tag => tag.Id.Value, tag => tagBounds[tag.Id.Value]);
+        int moved = 0;
+        var movedIds = new List<ElementId>();
+        using (var transaction = new Transaction(
+                   document,
+                   "FamilyMEP - Move Tags Clear Of Selected Elements"))
+        {
+            transaction.Start();
+            foreach (IndependentTag tag in clashingTags)
+            {
+                if (tag.Pinned)
+                {
+                    warnings.Add($"Tag {tag.Id.Value} is pinned and was skipped.");
+                    continue;
+                }
+                LayoutRect current = tagBounds[tag.Id.Value];
+                LayoutRect[] reservations = tagBounds
+                    .Where(item => item.Key != tag.Id.Value)
+                    .Select(item => item.Value)
+                    .ToArray();
+                double? shift = SmartTagManualAvoidance.FindNearestVerticalShift(
+                    current,
+                    obstacleBounds,
+                    reservations,
+                    clearance);
+                if (shift is null)
+                {
+                    warnings.Add($"Tag {tag.Id.Value} has no clear vertical position.");
+                    continue;
+                }
+                if (Math.Abs(shift.Value) <= 1e-9) continue;
+                try
+                {
+                    tag.TagHeadPosition += up * shift.Value;
+                    tagBounds[tag.Id.Value] = SmartTagManualAvoidance.Shift(
+                        current,
+                        shift.Value);
+                    moved++;
+                    movedIds.Add(tag.Id);
+                }
+                catch (Exception exception)
+                {
+                    warnings.Add(
+                        $"Tag {tag.Id.Value} element-clash move: " +
+                        FriendlyTagError(exception));
+                }
+            }
+            document.Regenerate();
+            int residualPredictedLeaderClashes = OptimizeLocalLeaderRowOrder(
+                document,
+                view,
+                selectedTags,
+                tagBounds,
+                obstacleBounds,
+                clearance,
+                right,
+                up,
+                warnings);
+            if (residualPredictedLeaderClashes > 0)
+                warnings.Add(
+                    $"AVOID retained {residualPredictedLeaderClashes} unavoidable predicted " +
+                    "leader clash(es) after row-order optimization.");
+            document.Regenerate();
+            AlignAndSpaceAvoidedTagClusters(
+                document,
+                view,
+                selectedTags,
+                tagBounds,
+                originalSelectedBounds,
+                obstacleBounds,
+                clearance,
+                right,
+                up,
+                warnings);
+            document.Regenerate();
+            // Route every scanned tag, not only the bodies that had to move.
+            // This lets AVOID also separate leader lanes inside the selected
+            // local group while tags outside the scan remain untouched.
+            IndependentTag[] movedTags = selectedTags
+                .Where(tag => !tag.Pinned && selectedTagIds.Contains(tag.Id.Value))
+                .ToArray();
+            RouteSeparatedOrthogonalLeaders(
+                document,
+                view,
+                movedTags.OrderByDescending(tag => tag.TagHeadPosition.DotProduct(up)).ToArray(),
+                right,
+                up,
+                warnings);
+            document.Regenerate();
+            RouteLeadersPreferStraight(
+                document,
+                view,
+                movedTags,
+                right,
+                up,
+                warnings);
+            document.Regenerate();
+            StabilizeAutoOrthogonalLeaders(
+                document,
+                view,
+                movedTags,
+                right,
+                up,
+                warnings,
+                forceHorizontal: false);
+            transaction.Commit();
+        }
+
+        List<ElementId> processedIds = selectedTags
+            .Where(tag => !tag.Pinned)
+            .Select(tag => tag.Id)
+            .ToList();
+        if (processedIds.Count > 0) uidoc.Selection.SetElementIds(processedIds);
+        return CaptureManualTagResult(
+            application,
+            uidoc,
+            view,
+            processedIds.Count,
+            selectedTags.Count - processedIds.Count,
+            warnings);
+    }
+
+    private static int OptimizeLocalLeaderRowOrder(
+        Document document,
+        View view,
+        IReadOnlyList<IndependentTag> selectedTags,
+        Dictionary<long, LayoutRect> allTagBounds,
+        IReadOnlyList<LayoutRect> obstacleBounds,
+        double clearance,
+        XYZ right,
+        XYZ up,
+        List<string> warnings)
+    {
+        IndependentTag[] movable = selectedTags
+            .Where(tag => tag.HasLeader && !tag.Pinned)
+            .GroupBy(tag => tag.Id.Value)
+            .Select(group => group.First())
+            .ToArray();
+        if (movable.Length < 2) return 0;
+
+        Dictionary<long, LayoutRect> actualBounds =
+            MeasureTagTextBoundsInOpenTransaction(
+                document,
+                view,
+                selectedTags,
+                right,
+                up,
+                warnings);
+        NormalizeAutoBodyBounds(
+            selectedTags,
+            actualBounds,
+            view,
+            right,
+            up,
+            warnings,
+            reportAdjustments: false);
+        foreach ((long key, LayoutRect value) in actualBounds)
+            allTagBounds[key] = value;
+
+        SmartTagStackRouteInput BuildInput(IndependentTag tag)
+        {
+            LayoutRect body = actualBounds[tag.Id.Value];
+            LayoutPoint end = TryGetLeaderOrHostAnchor(
+                tag,
+                document,
+                view,
+                right,
+                up) ?? new LayoutPoint(
+                (body.MinU + body.MaxU) * 0.5,
+                (body.MinV + body.MaxV) * 0.5);
+            LayoutPoint attachment = SmartTagStackRouting
+                .GetVisibleLeaderAttachmentPoint(body, end);
+            return new SmartTagStackRouteInput(
+                tag.Id.Value,
+                body,
+                attachment,
+                end);
+        }
+
+        SmartTagStackRouteInput[] movableInputs = movable
+            .Where(tag => actualBounds.ContainsKey(tag.Id.Value))
+            .Select(BuildInput)
+            .ToArray();
+        if (movableInputs.Length < 2) return 0;
+        SmartTagStackRouteInput[] fixedInputs = selectedTags
+            .Where(tag => tag.HasLeader && tag.Pinned &&
+                          actualBounds.ContainsKey(tag.Id.Value))
+            .Select(BuildInput)
+            .ToArray();
+        double[] rows = movableInputs
+            .Select(item => item.Head.V)
+            .OrderByDescending(value => value)
+            .ToArray();
+        double routeClearance = Math.Max(
+            clearance * 0.35,
+            0.10 * Math.Max(1, view.Scale) / 304.8);
+        SmartTagFixedRowRoutePlan plan =
+            SmartTagStackRouting.FindBestOrderForFixedRows(
+                movableInputs,
+                rows,
+                fixedInputs,
+                routeClearance);
+        Dictionary<long, IndependentTag> tagsById = movable
+            .ToDictionary(tag => tag.Id.Value);
+        for (int index = 0; index < plan.OrderedKeys.Count; index++)
+        {
+            long key = plan.OrderedKeys[index];
+            IndependentTag tag = tagsById[key];
+            LayoutRect body = actualBounds[key];
+            LayoutPoint end = TryGetLeaderOrHostAnchor(
+                tag,
+                document,
+                view,
+                right,
+                up) ?? new LayoutPoint(
+                (body.MinU + body.MaxU) * 0.5,
+                (body.MinV + body.MaxV) * 0.5);
+            double currentRow = SmartTagStackRouting
+                .GetVisibleLeaderAttachmentPoint(body, end).V;
+            double shiftV = rows[index] - currentRow;
+            if (Math.Abs(shiftV) <= 1e-9) continue;
+            try
+            {
+                tag.TagHeadPosition += up * shiftV;
+                actualBounds[key] = SmartTagManualAvoidance.Shift(body, shiftV);
+                allTagBounds[key] = actualBounds[key];
+            }
+            catch (Exception exception)
+            {
+                warnings.Add(
+                    $"Tag {key} leader-order move: " +
+                    FriendlyTagError(exception));
+            }
+        }
+        document.Regenerate();
+
+        // A row swap must never reintroduce a text/model clash. Recheck the
+        // real moved bodies and apply the smallest vertical correction while
+        // reserving every other visible tag body.
+        Dictionary<long, LayoutRect> movedBounds =
+            MeasureTagTextBoundsInOpenTransaction(
+                document,
+                view,
+                movable,
+                right,
+                up,
+                warnings);
+        NormalizeAutoBodyBounds(
+            movable,
+            movedBounds,
+            view,
+            right,
+            up,
+            warnings,
+            reportAdjustments: false);
+        foreach (IndependentTag tag in movable)
+        {
+            if (!movedBounds.TryGetValue(tag.Id.Value, out LayoutRect body)) continue;
+            foreach ((long key, LayoutRect value) in movedBounds)
+                allTagBounds[key] = value;
+            LayoutRect[] reservations = allTagBounds
+                .Where(item => item.Key != tag.Id.Value)
+                .Select(item => item.Value)
+                .ToArray();
+            double? repair = SmartTagManualAvoidance.FindNearestVerticalShift(
+                body,
+                obstacleBounds,
+                reservations,
+                clearance);
+            if (repair is null || Math.Abs(repair.Value) <= 1e-9) continue;
+            try
+            {
+                tag.TagHeadPosition += up * repair.Value;
+                LayoutRect repaired = SmartTagManualAvoidance.Shift(body, repair.Value);
+                movedBounds[tag.Id.Value] = repaired;
+                allTagBounds[tag.Id.Value] = repaired;
+            }
+            catch (Exception exception)
+            {
+                warnings.Add(
+                    $"Tag {tag.Id.Value} post-route clash repair: " +
+                    FriendlyTagError(exception));
+            }
+        }
+        return plan.CrossingCount;
+    }
+
+    private static void AlignAndSpaceAvoidedTagClusters(
+        Document document,
+        View view,
+        IReadOnlyList<IndependentTag> selectedTags,
+        Dictionary<long, LayoutRect> allTagBounds,
+        IReadOnlyDictionary<long, LayoutRect> originalSelectedBounds,
+        IReadOnlyList<LayoutRect> obstacleBounds,
+        double visibleGap,
+        XYZ right,
+        XYZ up,
+        List<string> warnings)
+    {
+        IndependentTag[] movable = selectedTags
+            .Where(tag => !tag.Pinned)
+            .GroupBy(tag => tag.Id.Value)
+            .Select(group => group.First())
+            .ToArray();
+        if (movable.Length == 0) return;
+
+        Dictionary<long, LayoutRect> bounds =
+            MeasureTagTextBoundsInOpenTransaction(
+                document,
+                view,
+                movable,
+                right,
+                up,
+                warnings);
+        NormalizeAutoBodyBounds(
+            movable,
+            bounds,
+            view,
+            right,
+            up,
+            warnings,
+            reportAdjustments: false);
+
+        var items = movable
+            .Where(tag => bounds.ContainsKey(tag.Id.Value))
+            .Select(tag =>
+            {
+                LayoutRect body = bounds[tag.Id.Value];
+                LayoutPoint insertion = Project(tag.TagHeadPosition, right, up);
+                LayoutPoint anchor = TryGetLeaderOrHostAnchor(
+                    tag,
+                    document,
+                    view,
+                    right,
+                    up) ?? new LayoutPoint(
+                    (body.MinU + body.MaxU) * 0.5,
+                    (body.MinV + body.MaxV) * 0.5);
+                double leftEdge = SmartTagStackRouting.GetVisibleLeftEdge(
+                    body,
+                    insertion,
+                    anchor,
+                    tag.HasLeader);
+                LayoutRect original = originalSelectedBounds.TryGetValue(
+                    tag.Id.Value,
+                    out LayoutRect originalBody)
+                        ? originalBody
+                        : body;
+                return (Tag: tag, Bounds: body, OriginalBounds: original,
+                    Anchor: anchor, LeftEdge: leftEdge);
+            })
+            .OrderByDescending(item =>
+                (item.OriginalBounds.MinV + item.OriginalBounds.MaxV) * 0.5)
+            .ToList();
+        if (items.Count == 0) return;
+
+        double safeGap = Math.Max(0.0, visibleGap);
+        double medianHeight = items
+            .Select(item => item.OriginalBounds.Height)
+            .OrderBy(value => value)
+            .ElementAt(items.Count / 2);
+        double clusterBreak = Math.Max(
+            medianHeight * 3.0,
+            medianHeight + safeGap * 6.0);
+        var clusters = new List<List<(IndependentTag Tag, LayoutRect Bounds,
+            LayoutRect OriginalBounds, LayoutPoint Anchor, double LeftEdge)>>();
+        foreach (var item in items)
+        {
+            if (clusters.Count == 0)
+            {
+                clusters.Add([item]);
+                continue;
+            }
+            var previous = clusters[^1][^1];
+            double currentCenter =
+                (item.OriginalBounds.MinV + item.OriginalBounds.MaxV) * 0.5;
+            double previousCenter =
+                (previous.OriginalBounds.MinV + previous.OriginalBounds.MaxV) * 0.5;
+            if (previousCenter - currentCenter > clusterBreak)
+                clusters.Add([item]);
+            else
+                clusters[^1].Add(item);
+        }
+
+        double commonLeftEdge = items.Min(item => item.LeftEdge);
+        var desiredBounds = new Dictionary<long, LayoutRect>();
+        foreach (var cluster in clusters)
+        {
+            // Use the pre-AVOID cluster envelope as the local anchor. The
+            // optimized live row order is retained, but an early per-tag
+            // escape can no longer drag the whole group far away.
+            double nextTop = cluster.Max(item => item.OriginalBounds.MaxV);
+            foreach (var item in cluster
+                         .OrderByDescending(entry =>
+                             (entry.Bounds.MinV + entry.Bounds.MaxV) * 0.5))
+            {
+                double shiftU = commonLeftEdge - item.LeftEdge;
+                double desiredCenterV = nextTop - item.Bounds.Height * 0.5;
+                double currentCenterV =
+                    (item.Bounds.MinV + item.Bounds.MaxV) * 0.5;
+                LayoutRect desired = ShiftRect(
+                    item.Bounds,
+                    shiftU,
+                    desiredCenterV - currentCenterV);
+                desiredBounds[item.Tag.Id.Value] = desired;
+                nextTop = desired.MinV - safeGap;
+            }
+        }
+
+        HashSet<long> selectedIds = movable
+            .Select(tag => tag.Id.Value)
+            .ToHashSet();
+        List<LayoutRect> fixedReservations = allTagBounds
+            .Where(item => !selectedIds.Contains(item.Key))
+            .Select(item => item.Value)
+            .ToList();
+        foreach (var cluster in clusters)
+        {
+            LayoutRect[] groupBodies = cluster
+                .Select(item => desiredBounds[item.Tag.Id.Value])
+                .ToArray();
+            LayoutRect groupEnvelope = new(
+                groupBodies.Min(body => body.MinU),
+                groupBodies.Min(body => body.MinV),
+                groupBodies.Max(body => body.MaxU),
+                groupBodies.Max(body => body.MaxV));
+            double? groupShift = SmartTagManualAvoidance.FindNearestVerticalShift(
+                groupEnvelope,
+                obstacleBounds,
+                fixedReservations,
+                safeGap);
+            double shiftV = groupShift ?? 0.0;
+            if (groupShift is null)
+                warnings.Add(
+                    "An AVOID tag cluster had no completely clear vertical location; " +
+                    "its aligned rows were kept at the nearest planned position.");
+            foreach (var item in cluster)
+            {
+                LayoutRect desired = SmartTagManualAvoidance.Shift(
+                    desiredBounds[item.Tag.Id.Value],
+                    shiftV);
+                desiredBounds[item.Tag.Id.Value] = desired;
+                fixedReservations.Add(desired);
+            }
+        }
+
+        foreach (var item in items)
+        {
+            LayoutRect desired = desiredBounds[item.Tag.Id.Value];
+            double desiredCenterV = (desired.MinV + desired.MaxV) * 0.5;
+            double currentCenterV =
+                (item.Bounds.MinV + item.Bounds.MaxV) * 0.5;
+            try
+            {
+                item.Tag.TagHeadPosition +=
+                    right * (commonLeftEdge - item.LeftEdge) +
+                    up * (desiredCenterV - currentCenterV);
+                allTagBounds[item.Tag.Id.Value] = desired;
+            }
+            catch (Exception exception)
+            {
+                warnings.Add(
+                    $"Tag {item.Tag.Id.Value} AVOID cluster alignment: " +
+                    FriendlyTagError(exception));
+            }
+        }
+        document.Regenerate();
+
+        // Lock real family text edges and centers after Revit recalculates
+        // multi-line tag boxes. This keeps the same visible gap in every cluster.
+        for (int correction = 0; correction < 2; correction++)
+        {
+            Dictionary<long, LayoutRect> actualBounds =
+                MeasureTagTextBoundsInOpenTransaction(
+                    document,
+                    view,
+                    movable,
+                    right,
+                    up,
+                    warnings);
+            NormalizeAutoBodyBounds(
+                movable,
+                actualBounds,
+                view,
+                right,
+                up,
+                warnings,
+                reportAdjustments: false);
+            foreach (var item in items)
+            {
+                if (!actualBounds.TryGetValue(
+                        item.Tag.Id.Value,
+                        out LayoutRect actual))
+                    continue;
+                LayoutRect desired = desiredBounds[item.Tag.Id.Value];
+                LayoutPoint insertion = Project(item.Tag.TagHeadPosition, right, up);
+                LayoutPoint anchor = TryGetLeaderOrHostAnchor(
+                    item.Tag,
+                    document,
+                    view,
+                    right,
+                    up) ?? new LayoutPoint(
+                    (actual.MinU + actual.MaxU) * 0.5,
+                    (actual.MinV + actual.MaxV) * 0.5);
+                double actualLeft = SmartTagStackRouting.GetVisibleLeftEdge(
+                    actual,
+                    insertion,
+                    anchor,
+                    item.Tag.HasLeader);
+                double actualCenterV = (actual.MinV + actual.MaxV) * 0.5;
+                double desiredCenterV = (desired.MinV + desired.MaxV) * 0.5;
+                item.Tag.TagHeadPosition +=
+                    right * (commonLeftEdge - actualLeft) +
+                    up * (desiredCenterV - actualCenterV);
+            }
+            document.Regenerate();
+        }
+    }
+
+    public static SmartTagManualAlignResult? PickAndAlignTagRowsHorizontally(
+        UIApplication application,
+        double rowGapPaperMillimeters = 1.0,
+        bool placeExtrasAbove = false)
+    {
+        UIDocument uidoc = application.ActiveUIDocument
+            ?? throw new InvalidOperationException("Open a Revit project first.");
+        Document document = uidoc.Document;
+        View view = document.ActiveView;
+        XYZ right = view.RightDirection.Normalize();
+        XYZ up = view.UpDirection.Normalize();
+        LayoutRect referenceZone;
+        LayoutRect targetZone;
+        try
+        {
+            referenceZone = ProjectPickedBox(
+                uidoc.Selection.PickBox(
+                    PickBoxStyle.Crossing,
+                    "HORIZONTAL step 1/2: drag across the REFERENCE tag text/leader lines."),
+                right,
+                up);
+            targetZone = ProjectPickedBox(
+                uidoc.Selection.PickBox(
+                    PickBoxStyle.Crossing,
+                    "HORIZONTAL step 2/2: drag across the TARGET tag text/leader lines."),
+                right,
+                up);
+        }
+        catch (Autodesk.Revit.Exceptions.OperationCanceledException)
+        {
+            return null;
+        }
+
+        var warnings = new List<string>();
+        (List<IndependentTag> referenceTags, _) = CollectTagsTouchedByRectangle(
+            document,
+            view,
+            referenceZone,
+            right,
+            up,
+            warnings);
+        HashSet<long> referenceIds = referenceTags
+            .Select(tag => tag.Id.Value)
+            .ToHashSet();
+        (List<IndependentTag> targetTags, _) = CollectTagsTouchedByRectangle(
+            document,
+            view,
+            targetZone,
+            right,
+            up,
+            warnings);
+        targetTags = targetTags
+            .Where(tag => !referenceIds.Contains(tag.Id.Value))
+            .ToList();
+        if (referenceTags.Count == 0 || targetTags.Count == 0)
+            throw new InvalidOperationException(
+                "Both rectangles must touch at least one tag text or leader line.");
+        int pairCount = Math.Min(referenceTags.Count, targetTags.Count);
+        if (referenceTags.Count != targetTags.Count)
+            warnings.Add(
+                $"HORIZONTAL aligned {pairCount} target row(s) to " +
+                $"{referenceTags.Count} reference tag(s). " +
+                (targetTags.Count > referenceTags.Count
+                    ? $"The remaining {targetTags.Count - referenceTags.Count} target tag(s) " +
+                      $"will be arranged {(placeExtrasAbove ? "above" : "below")}."
+                    : "Unused reference rows remain fixed."));
+
+        IndependentTag[] measurementTags = referenceTags
+            .Concat(targetTags)
+            .GroupBy(tag => tag.Id.Value)
+            .Select(group => group.First())
+            .ToArray();
+        Dictionary<long, LayoutRect> bounds = MeasureTagTextBounds(
+            document,
+            view,
+            measurementTags,
+            right,
+            up,
+            warnings,
+            "FamilyMEP - Measure Horizontal Row Tags");
+        NormalizeAutoBodyBounds(
+            measurementTags,
+            bounds,
+            view,
+            right,
+            up,
+            warnings,
+            reportAdjustments: false);
+        if (measurementTags.Any(tag => !bounds.ContainsKey(tag.Id.Value)))
+            throw new InvalidOperationException(
+                "One or more selected tag text bounds could not be measured.");
+
+        Dictionary<long, IndependentTag> targetsById = targetTags
+            .ToDictionary(tag => tag.Id.Value);
+        List<IndependentTag> orderedReferences = referenceTags
+            .OrderByDescending(tag => GetVisibleTagRow(tag, bounds[tag.Id.Value]))
+            .ThenBy(tag => tag.Id.Value)
+            .ToList();
+        double[] alignedReferenceRows = orderedReferences
+            .Take(pairCount)
+            .Select(tag => GetVisibleTagRow(tag, bounds[tag.Id.Value]))
+            .ToArray();
+        var desiredRows = alignedReferenceRows.ToList();
+        int extraCount = Math.Max(0, targetTags.Count - pairCount);
+        if (extraCount > 0)
+        {
+            double rowGap = Math.Max(0.0, rowGapPaperMillimeters) *
+                            Math.Max(1, view.Scale) / 304.8;
+            double maximumTargetHeight = targetTags
+                .Max(tag => bounds[tag.Id.Value].Height);
+            double pitch = maximumTargetHeight + rowGap;
+            if (placeExtrasAbove)
+            {
+                double top = alignedReferenceRows.Max();
+                double[] extraRows = Enumerable.Range(1, extraCount)
+                    .Select(index => top + pitch * index)
+                    .OrderByDescending(value => value)
+                    .ToArray();
+                desiredRows.InsertRange(0, extraRows);
+            }
+            else
+            {
+                double bottom = alignedReferenceRows.Min();
+                desiredRows.AddRange(Enumerable.Range(1, extraCount)
+                    .Select(index => bottom - pitch * index));
+            }
+        }
+        double routeClearance = Math.Max(
+            0.10 * Math.Max(1, view.Scale) / 304.8,
+            1e-8);
+        SmartTagFixedRowRoutePlan rowPlan =
+            SmartTagStackRouting.FindBestOrderForFixedRows(
+                targetTags.Select(BuildRowRouteInput).ToArray(),
+                desiredRows,
+                orderedReferences.Select(BuildRowRouteInput).ToArray(),
+                routeClearance);
+        List<IndependentTag> orderedTargets = rowPlan.OrderedKeys
+            .Select(key => targetsById[key])
+            .ToList();
+        Dictionary<long, double> desiredRowsByTag = rowPlan.OrderedKeys
+            .Select((key, index) => (Key: key, Row: desiredRows[index]))
+            .ToDictionary(item => item.Key, item => item.Row);
+        if (rowPlan.CrossingCount > 0)
+            warnings.Add(
+                $"HORIZONTAL retained {rowPlan.CrossingCount} unavoidable predicted " +
+                "leader clash(es) after fixed-row order optimization.");
+        int aligned = 0;
+        var alignedIds = new List<ElementId>();
+        using (var transaction = new Transaction(
+                   document,
+                   "FamilyMEP - Align Tag Rows Horizontally"))
+        {
+            transaction.Start();
+            foreach (IndependentTag target in orderedTargets)
+            {
+                if (target.Pinned)
+                {
+                    warnings.Add($"Target tag {target.Id.Value} is pinned and was skipped.");
+                    continue;
+                }
+                double shiftV = desiredRowsByTag[target.Id.Value] -
+                                GetVisibleTagRow(
+                                    target,
+                                    bounds[target.Id.Value]);
+                try
+                {
+                    target.TagHeadPosition += up * shiftV;
+                    aligned++;
+                    alignedIds.Add(target.Id);
+                }
+                catch (Exception exception)
+                {
+                    warnings.Add(
+                        $"Tag {target.Id.Value} horizontal-row alignment: " +
+                        FriendlyTagError(exception));
+                }
+            }
+            document.Regenerate();
+
+            for (int correction = 0; correction < 2; correction++)
+            {
+                Dictionary<long, LayoutRect> actualBounds =
+                    MeasureTagTextBoundsInOpenTransaction(
+                        document,
+                        view,
+                        measurementTags,
+                        right,
+                        up,
+                        warnings);
+                NormalizeAutoBodyBounds(
+                    measurementTags,
+                    actualBounds,
+                    view,
+                    right,
+                    up,
+                    warnings,
+                    reportAdjustments: false);
+                foreach (IndependentTag target in orderedTargets
+                             .Where(tag => alignedIds.Contains(tag.Id)))
+                {
+                    if (!actualBounds.TryGetValue(
+                            target.Id.Value,
+                            out LayoutRect targetBounds))
+                        continue;
+                    double correctionV = desiredRowsByTag[target.Id.Value] -
+                                         GetVisibleTagRow(target, targetBounds);
+                    target.TagHeadPosition += up * correctionV;
+                }
+                document.Regenerate();
+            }
+
+            IndependentTag[] alignedTags = orderedTargets
+                .Where(tag => alignedIds.Contains(tag.Id))
+                .ToArray();
+            RouteSeparatedOrthogonalLeaders(
+                document,
+                view,
+                alignedTags,
+                right,
+                up,
+                warnings);
+            document.Regenerate();
+            RouteLeadersPreferStraight(
+                document,
+                view,
+                alignedTags,
+                right,
+                up,
+                warnings,
+                additionalFixedTags: orderedReferences);
+            document.Regenerate();
+            StabilizeAutoOrthogonalLeaders(
+                document,
+                view,
+                alignedTags,
+                right,
+                up,
+                warnings,
+                forceHorizontal: false);
+            transaction.Commit();
+        }
+
+        if (alignedIds.Count > 0) uidoc.Selection.SetElementIds(alignedIds);
+        return CaptureManualTagResult(
+            application,
+            uidoc,
+            view,
+            aligned,
+            targetTags.Count - aligned,
+            warnings);
+
+        double GetVisibleTagRow(IndependentTag tag, LayoutRect tagBounds)
+        {
+            LayoutPoint anchor = TryGetLeaderOrHostAnchor(
+                tag,
+                document,
+                view,
+                right,
+                up) ?? new LayoutPoint(
+                    (tagBounds.MinU + tagBounds.MaxU) * 0.5,
+                    (tagBounds.MinV + tagBounds.MaxV) * 0.5);
+            return SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
+                tagBounds,
+                anchor).V;
+        }
+
+        SmartTagStackRouteInput BuildRowRouteInput(IndependentTag tag)
+        {
+            LayoutRect body = bounds[tag.Id.Value];
+            LayoutPoint anchor = TryGetLeaderOrHostAnchor(
+                tag,
+                document,
+                view,
+                right,
+                up) ?? new LayoutPoint(
+                (body.MinU + body.MaxU) * 0.5,
+                (body.MinV + body.MaxV) * 0.5);
+            LayoutPoint attachment = SmartTagStackRouting
+                .GetVisibleLeaderAttachmentPoint(body, anchor);
+            return new SmartTagStackRouteInput(
+                tag.Id.Value,
+                body,
+                attachment,
+                anchor);
+        }
+    }
+
+    public static SmartTagManualAlignResult? PickAndSplitTagsAroundDivider(
+        UIApplication application,
+        double rowGapPaperMillimeters = 1.0)
+    {
+        UIDocument uidoc = application.ActiveUIDocument
+            ?? throw new InvalidOperationException("Open a Revit project first.");
+        Document document = uidoc.Document;
+        View view = document.ActiveView;
+        XYZ right = view.RightDirection.Normalize();
+        XYZ up = view.UpDirection.Normalize();
+        LayoutRect sourceZone;
+        XYZ first;
+        XYZ second;
+        try
+        {
+            sourceZone = ProjectPickedBox(
+                uidoc.Selection.PickBox(
+                    PickBoxStyle.Crossing,
+                    "SPLIT step 1/3: drag across every messy tag text/leader line to include."),
+                right,
+                up);
+            first = uidoc.Selection.PickPoint(
+                ObjectSnapTypes.None,
+                "SPLIT step 2/3: click the TOP end of the left/right divider.");
+            second = uidoc.Selection.PickPoint(
+                ObjectSnapTypes.None,
+                "SPLIT step 3/3: click the BOTTOM end of the divider.");
+        }
+        catch (Autodesk.Revit.Exceptions.OperationCanceledException)
+        {
+            return null;
+        }
+
+        LayoutPoint firstPoint = Project(first, right, up);
+        LayoutPoint secondPoint = Project(second, right, up);
+        double dividerU = (firstPoint.U + secondPoint.U) * 0.5;
+        double lineMinV = Math.Min(firstPoint.V, secondPoint.V);
+        double lineMaxV = Math.Max(firstPoint.V, secondPoint.V);
+        if (lineMaxV - lineMinV <= 1e-6)
+            throw new InvalidOperationException(
+                "The SPLIT divider must have a usable vertical length.");
+
+        double scale = Math.Max(1, view.Scale);
+        var warnings = new List<string>();
+        (List<IndependentTag> selectedTags, _) = CollectTagsTouchedByRectangle(
+            document,
+            view,
+            sourceZone,
+            right,
+            up,
+            warnings);
+        if (selectedTags.Count == 0)
+            throw new InvalidOperationException(
+                "The SPLIT scan rectangle did not touch any tag text or leader line.");
+
+        Dictionary<long, LayoutRect> bounds = MeasureTagTextBounds(
+            document,
+            view,
+            selectedTags,
+            right,
+            up,
+            warnings,
+            "FamilyMEP - Measure Split Tags");
+        NormalizeAutoBodyBounds(
+            selectedTags,
+            bounds,
+            view,
+            right,
+            up,
+            warnings,
+            reportAdjustments: false);
+
+        var items = selectedTags
+            .Where(tag => bounds.ContainsKey(tag.Id.Value))
+            .Select(tag =>
+            {
+                LayoutRect body = bounds[tag.Id.Value];
+                LayoutPoint anchor = TryGetLeaderOrHostAnchor(
+                    tag,
+                    document,
+                    view,
+                    right,
+                    up) ?? new LayoutPoint(
+                    (body.MinU + body.MaxU) * 0.5,
+                    (body.MinV + body.MaxV) * 0.5);
+                return (Tag: tag, Bounds: body, Anchor: anchor,
+                    PlaceLeft: anchor.U < dividerU);
+            })
+            .ToList();
+        if (items.Count == 0)
+            throw new InvalidOperationException(
+                "The selected split-tag text bounds could not be measured.");
+
+        double rowGap = Math.Max(0.0, rowGapPaperMillimeters) * scale / 304.8;
+        double railOffset = Math.Max(2.0 * scale / 304.8, rowGap);
+        var desiredEdges = new Dictionary<long, (bool Left, double Edge)>();
+        foreach (var item in items)
+        {
+            // SPLIT is a local gather, not a global column layout. Using the
+            // outermost host as one rail made a wide scan drag every tag on
+            // that side across the whole view. Keep each body close to its
+            // own host/leader endpoint instead.
+            double edge = item.PlaceLeft
+                ? item.Anchor.U - railOffset
+                : item.Anchor.U + railOffset;
+            desiredEdges[item.Tag.Id.Value] = (item.PlaceLeft, edge);
+        }
+
+        int arranged = 0;
+        var arrangedIds = new List<ElementId>();
+        using (var transaction = new Transaction(
+                   document,
+                   "FamilyMEP - Split Tags Left And Right"))
+        {
+            transaction.Start();
+            foreach (var item in items)
+            {
+                IndependentTag tag = item.Tag;
+                if (tag.Pinned)
+                {
+                    warnings.Add($"Tag {tag.Id.Value} is pinned and was skipped.");
+                    continue;
+                }
+                try
+                {
+                    (bool left, double targetEdge) = desiredEdges[tag.Id.Value];
+                    double currentEdge = left ? item.Bounds.MaxU : item.Bounds.MinU;
+                    // SPLIT is intentionally a coarse horizontal gather only.
+                    // Preserve the exact existing row so the user can run
+                    // STACK/H-ALIGN/AUTO afterward when desired.
+                    tag.TagHeadPosition += right * (targetEdge - currentEdge);
+                    arranged++;
+                    arrangedIds.Add(tag.Id);
+                }
+                catch (Exception exception)
+                {
+                    warnings.Add(
+                        $"Tag {tag.Id.Value} split placement: " +
+                        FriendlyTagError(exception));
+                }
+            }
+            document.Regenerate();
+
+            // Revit tag families can change their measured horizontal body
+            // offset after orientation/movement. Correct only U; never alter V.
+            for (int correction = 0; correction < 2; correction++)
+            {
+                IndependentTag[] arrangedTags = items
+                    .Where(item => arrangedIds.Contains(item.Tag.Id))
+                    .Select(item => item.Tag)
+                    .ToArray();
+                Dictionary<long, LayoutRect> actualBounds =
+                    MeasureTagTextBoundsInOpenTransaction(
+                        document,
+                        view,
+                        arrangedTags,
+                        right,
+                        up,
+                        warnings);
+                NormalizeAutoBodyBounds(
+                    arrangedTags,
+                    actualBounds,
+                    view,
+                    right,
+                    up,
+                    warnings,
+                    reportAdjustments: false);
+                foreach (IndependentTag tag in arrangedTags)
+                {
+                    if (!actualBounds.TryGetValue(tag.Id.Value, out LayoutRect actual))
+                        continue;
+                    (bool left, double targetEdge) = desiredEdges[tag.Id.Value];
+                    double actualEdge = left ? actual.MaxU : actual.MinU;
+                    tag.TagHeadPosition += right * (targetEdge - actualEdge);
+                }
+                document.Regenerate();
+            }
+
+            IndependentTag[] routedTags = items
+                .Where(item => arrangedIds.Contains(item.Tag.Id))
+                .Select(item => item.Tag)
+                .OrderByDescending(tag => tag.TagHeadPosition.DotProduct(up))
+                .ToArray();
+            RouteOrthogonalLeadersKeepingEnds(
+                document,
+                view,
+                routedTags,
+                right,
+                up,
+                warnings);
+            document.Regenerate();
+            StabilizeAutoOrthogonalLeaders(
+                document,
+                view,
+                routedTags,
+                right,
+                up,
+                warnings,
+                forceHorizontal: false);
+            transaction.Commit();
+        }
+
+        if (arrangedIds.Count > 0) uidoc.Selection.SetElementIds(arrangedIds);
+        return CaptureManualTagResult(
+            application,
+            uidoc,
+            view,
+            arranged,
+            selectedTags.Count - arranged,
+            warnings);
+    }
+
+    private static SmartTagManualAlignResult CaptureManualTagResult(
+        UIApplication application,
+        UIDocument uidoc,
+        View view,
+        int changed,
+        int skipped,
+        IReadOnlyList<string> warnings)
+    {
+        uidoc.RefreshActiveView();
+        UIView uiView = uidoc.GetOpenUIViews()
+            .FirstOrDefault(item => item.ViewId == view.Id)
+            ?? throw new InvalidOperationException("The active Revit view is not open on screen.");
+        WaitForActualTagPreviewPaint(
+            uidoc,
+            application.MainWindowHandle,
+            Math.Max(1, changed));
+        var window = uiView.GetWindowRectangle();
+        byte[] image = CaptureViewport(
+            application.MainWindowHandle,
+            window.Left,
+            window.Top,
+            Math.Max(1, window.Right - window.Left),
+            Math.Max(1, window.Bottom - window.Top));
+        return new SmartTagManualAlignResult(
+            changed,
+            skipped,
+            warnings,
+            image);
     }
 
     public static SmartTagManualAlignResult? PickAndAlignExistingTags(
@@ -632,6 +1784,14 @@ internal static class SmartTagRevitService
                 warnings,
                 fixedTag: referenceTag);
             document.Regenerate();
+            StabilizeAutoOrthogonalLeaders(
+                document,
+                view,
+                selectedTags.Where(tag => alignedIds.Contains(tag.Id)).ToArray(),
+                right,
+                up,
+                warnings,
+                forceHorizontal: false);
             transaction.Commit();
         }
 
@@ -961,6 +2121,17 @@ internal static class SmartTagRevitService
                 warnings,
                 fixedTag: referenceTag);
             document.Regenerate();
+            StabilizeAutoOrthogonalLeaders(
+                document,
+                view,
+                stackItems
+                    .Where(item => arrangedIds.Contains(item.Tag.Id))
+                    .Select(item => item.Tag)
+                    .ToArray(),
+                right,
+                up,
+                warnings,
+                forceHorizontal: false);
             transaction.Commit();
         }
 
@@ -1290,7 +2461,7 @@ internal static class SmartTagRevitService
         }
     }
 
-    private static double TryGetReferenceHostWidth(
+    private static LayoutRect? TryGetReferenceHostBounds(
         Reference reference,
         Document document,
         View view,
@@ -1306,17 +2477,25 @@ internal static class SmartTagRevitService
                 Element? linkedHost = link.GetLinkDocument()?.GetElement(reference.LinkedElementId);
                 BoundingBoxXYZ? linkedBox = linkedHost?.get_BoundingBox(null);
                 return linkedBox is null
-                    ? 0.0
-                    : ProjectBox(linkedBox, link.GetTransform(), right, up).Width;
+                    ? null
+                    : ProjectBox(linkedBox, link.GetTransform(), right, up);
             }
             BoundingBoxXYZ? box = host?.get_BoundingBox(view) ?? host?.get_BoundingBox(null);
-            return box is null ? 0.0 : ProjectBox(box, right, up).Width;
+            return box is null ? null : ProjectBox(box, right, up);
         }
         catch
         {
-            return 0.0;
+            return null;
         }
     }
+
+    private static double TryGetReferenceHostWidth(
+        Reference reference,
+        Document document,
+        View view,
+        XYZ right,
+        XYZ up) =>
+        TryGetReferenceHostBounds(reference, document, view, right, up)?.Width ?? 0.0;
 
     public static SmartTagManualAlignResult? PickAndArrangeTagsAroundReference(
         UIApplication application,
@@ -1772,7 +2951,8 @@ internal static class SmartTagRevitService
                 right,
                 up,
                 warnings,
-                fixedTag: referenceTag);
+                fixedTag: referenceTag,
+                mixedSideEndpointDirection: placeAboveReference ? -1 : 1);
             document.Regenerate();
             committedOrderedTags = finalOrderedTags.ToArray();
             transaction.Commit();
@@ -1869,7 +3049,8 @@ internal static class SmartTagRevitService
                 right,
                 up,
                 warnings,
-                fixedTag: referenceTag);
+                fixedTag: referenceTag,
+                mixedSideEndpointDirection: placeAboveReference ? -1 : 1);
             correction.Commit();
             persistedBodyBounds = MeasureTagTextBounds(
                 document,
@@ -2256,6 +3437,17 @@ internal static class SmartTagRevitService
                 }
             }
             document.Regenerate();
+            StabilizeAutoOrthogonalLeaders(
+                document,
+                view,
+                items
+                    .Where(item => arrangedIds.Contains(item.Tag.Id))
+                    .Select(item => item.Tag)
+                    .ToArray(),
+                right,
+                up,
+                warnings,
+                forceHorizontal: false);
             transaction.Commit();
         }
 
@@ -3007,6 +4199,13 @@ internal static class SmartTagRevitService
                     routes.Add(new LeaderLaneRoute(
                         tag,
                         reference,
+                        bodyBounds.TryGetValue(tag.Id.Value, out LayoutRect body)
+                            ? body
+                            : new LayoutRect(
+                                insertion.U,
+                                insertion.V,
+                                insertion.U,
+                                insertion.V),
                         attachment,
                         end.Value,
                         TryGetReferenceHostWidth(reference, document, view, right, up),
@@ -3158,7 +4357,7 @@ internal static class SmartTagRevitService
             SmartTagStackRouteInput Convert(LeaderLaneRoute route) =>
                 new(
                     route.Tag.Id.Value,
-                    new LayoutRect(route.Head.U, route.Head.V, route.Head.U, route.Head.V),
+                    route.BodyBounds,
                     route.Head,
                     route.End);
             return SmartTagStackRouting.FindBestLaneAssignment(
@@ -3294,7 +4493,9 @@ internal static class SmartTagRevitService
         XYZ right,
         XYZ up,
         List<string> warnings,
-        IndependentTag? fixedTag = null)
+        IndependentTag? fixedTag = null,
+        IReadOnlyList<IndependentTag>? additionalFixedTags = null,
+        int mixedSideEndpointDirection = 0)
     {
         IndependentTag[] distinctTags = tags
             .Where(tag => tag.HasLeader && !tag.Pinned)
@@ -3305,11 +4506,16 @@ internal static class SmartTagRevitService
 
         IndependentTag[] measuredTags = distinctTags
             .Append(fixedTag)
+            .Concat(additionalFixedTags ?? [])
             .Where(tag => tag is not null && tag.HasLeader)
             .Select(tag => tag!)
             .GroupBy(tag => tag.Id.Value)
             .Select(group => group.First())
             .ToArray();
+        HashSet<long> fixedTagIds = (additionalFixedTags ?? [])
+            .Select(tag => tag.Id.Value)
+            .ToHashSet();
+        if (fixedTag is not null) fixedTagIds.Add(fixedTag.Id.Value);
 
         Dictionary<long, LayoutRect> bodyBounds = MeasureTagTextBoundsInOpenTransaction(
             document,
@@ -3328,7 +4534,8 @@ internal static class SmartTagRevitService
             reportAdjustments: false);
 
         var routes = new List<(IndependentTag Tag, Reference Reference,
-            LayoutPoint Attachment, LayoutPoint End, bool IsFixed)>();
+            LayoutPoint Attachment, LayoutPoint End, LayoutRect? HostBounds,
+            bool IsFixed)>();
         foreach (IndependentTag tag in measuredTags)
         {
             try
@@ -3357,7 +4564,9 @@ internal static class SmartTagRevitService
                             reference,
                             attachment,
                             end.Value,
-                            fixedTag is not null && tag.Id == fixedTag.Id));
+                            TryGetReferenceHostBounds(
+                                reference, document, view, right, up),
+                            fixedTagIds.Contains(tag.Id.Value)));
                     }
                 }
             }
@@ -3379,6 +4588,12 @@ internal static class SmartTagRevitService
         var acceptedPaths = routes
             .Select(route => BuildOrthogonalPath(route.Attachment, route.End))
             .ToList();
+        bool mixedSides = mixedSideEndpointDirection != 0 &&
+                          routes.Where(route => !route.IsFixed)
+                              .Any(route => route.End.U < route.Attachment.U - axisTolerance) &&
+                          routes.Where(route => !route.IsFixed)
+                              .Any(route => route.End.U > route.Attachment.U + axisTolerance);
+        int forcedOrthogonal = 0;
 
         for (int index = 0; index < routes.Count; index++)
         {
@@ -3404,16 +4619,38 @@ internal static class SmartTagRevitService
                 crossesOtherBody,
                 crossesOtherLeader);
 
+            LayoutPoint orthogonalEnd = route.End;
+            bool forceMixedSideElbow = mixedSides;
+            if (forceMixedSideElbow && sameHorizontalRow &&
+                route.HostBounds is LayoutRect hostBounds)
+            {
+                double requestedOffset = Math.Max(
+                    0.70 * Math.Max(1, view.Scale) / 304.8,
+                    axisTolerance * 2.0);
+                orthogonalEnd = SmartTagStackRouting.OffsetMixedSideEndInsideHost(
+                    route.End,
+                    hostBounds,
+                    mixedSideEndpointDirection,
+                    requestedOffset,
+                    axisTolerance);
+            }
+            if (forceMixedSideElbow &&
+                Math.Abs(orthogonalEnd.V - route.Attachment.V) > axisTolerance)
+            {
+                useStraight = false;
+                forcedOrthogonal++;
+            }
+
             acceptedPaths[index] = useStraight
                 ? [straight]
-                : BuildOrthogonalPath(route.Attachment, route.End);
+                : BuildOrthogonalPath(route.Attachment, orthogonalEnd);
             try
             {
                 if (route.Tag.LeaderEndCondition != LeaderEndCondition.Free)
                     route.Tag.LeaderEndCondition = LeaderEndCondition.Free;
                 LayoutPoint appliedEnd = useStraight
                     ? exactHorizontalEnd
-                    : route.End;
+                    : orthogonalEnd;
                 XYZ endWorld = MoveInViewPlane(
                     route.Tag.TagHeadPosition,
                     appliedEnd,
@@ -3422,7 +4659,7 @@ internal static class SmartTagRevitService
                 route.Tag.SetLeaderEnd(route.Reference, endWorld);
 
                 LayoutPoint elbow = new(
-                    route.End.U,
+                    appliedEnd.U,
                     route.Attachment.V);
                 XYZ elbowWorld = MoveInViewPlane(
                     route.Tag.TagHeadPosition,
@@ -3437,6 +4674,12 @@ internal static class SmartTagRevitService
                     $"Tag {route.Tag.Id.Value} straight/orthogonal leader: " +
                     FriendlyTagError(exception));
             }
+        }
+        if (forcedOrthogonal > 0)
+        {
+            warnings.Add(
+                $"AUTO mixed-side routing: kept {forcedOrthogonal} leader(s) orthogonal " +
+                "with a short host-side offset instead of collapsing them to straight lines.");
         }
 
         static List<LayoutSegment> BuildOrthogonalPath(
@@ -3460,7 +4703,8 @@ internal static class SmartTagRevitService
         IReadOnlyList<IndependentTag> tags,
         XYZ right,
         XYZ up,
-        List<string> warnings)
+        List<string> warnings,
+        bool forceHorizontal = true)
     {
         IndependentTag[] distinctTags = tags
             .Where(tag => tag.HasLeader && !tag.Pinned)
@@ -3477,10 +4721,13 @@ internal static class SmartTagRevitService
         for (int pass = 0; pass < 6; pass++)
         {
             failedTags.Clear();
-            foreach (IndependentTag tag in distinctTags)
+            if (forceHorizontal)
             {
-                try { tag.TagOrientation = TagOrientation.Horizontal; }
-                catch { failedTags.Add(tag.Id.Value); }
+                foreach (IndependentTag tag in distinctTags)
+                {
+                    try { tag.TagOrientation = TagOrientation.Horizontal; }
+                    catch { failedTags.Add(tag.Id.Value); }
+                }
             }
             document.Regenerate();
 
@@ -3554,7 +4801,7 @@ internal static class SmartTagRevitService
         if (!stable || failedTags.Count > 0)
         {
             warnings.Add(
-                $"AUTO orthogonal verification: {failedTags.Count} tag(s) " +
+                $"Tag orthogonal verification: {failedTags.Count} tag(s) " +
                 "could not be fully verified after regeneration.");
         }
     }
@@ -3847,7 +5094,9 @@ internal static class SmartTagRevitService
         }
 
         document.Regenerate();
-        if (settings.LayoutStyle is SmartTagLayoutStyle.CompactGroups or SmartTagLayoutStyle.GuidedZones or SmartTagLayoutStyle.StandardNearHost)
+        if (settings.LayoutStyle is SmartTagLayoutStyle.CompactGroups or
+            SmartTagLayoutStyle.GuidedZones or
+            SmartTagLayoutStyle.StandardNearHost)
         {
             // The adaptive planner already fixed every local group in host
             // top-to-bottom order. Re-running the crossing optimizer used to
@@ -3865,7 +5114,8 @@ internal static class SmartTagRevitService
                 settings,
                 warnings);
         }
-        if (settings.LayoutStyle is not SmartTagLayoutStyle.GuidedZones and not SmartTagLayoutStyle.StandardNearHost)
+        if (settings.LayoutStyle is not SmartTagLayoutStyle.GuidedZones and
+            not SmartTagLayoutStyle.StandardNearHost)
         {
             appliedTags = TranslateActualGroupsAwayFromMep(
                 appliedTags,
@@ -3877,8 +5127,36 @@ internal static class SmartTagRevitService
                 baselineSnapshot,
                 settings,
                 warnings);
+            if (settings.AutoSide)
+            {
+                // Lane movement can expose an inversion between two formerly
+                // separate host groups. Re-solve the shared AUTO rail once
+                // with those actual endpoints, then reassign lanes around the
+                // accepted row order. Keep the extra convergence pass bounded
+                // on very large views so Analyze remains responsive.
+                if (appliedTags.Count <= 160)
+                {
+                    appliedTags = OptimizeActualRowOrder(
+                        appliedTags,
+                        baselineSnapshot,
+                        settings,
+                        warnings);
+                    appliedTags = OptimizeActualLeaderLanes(
+                        appliedTags,
+                        baselineSnapshot,
+                        settings,
+                        warnings);
+                }
+                appliedTags = RepairActualAutoResidualClashes(
+                    appliedTags,
+                    baselineSnapshot,
+                    settings,
+                    warnings);
+            }
         }
-        if (settings.LayoutStyle is not SmartTagLayoutStyle.CompactGroups and not SmartTagLayoutStyle.GuidedZones and not SmartTagLayoutStyle.StandardNearHost)
+        if (settings.LayoutStyle is not SmartTagLayoutStyle.CompactGroups and
+            not SmartTagLayoutStyle.GuidedZones and
+            not SmartTagLayoutStyle.StandardNearHost)
         {
             appliedTags = TranslateActualClustersAroundArchitecture(
                 appliedTags,
@@ -3886,7 +5164,7 @@ internal static class SmartTagRevitService
                 settings,
                 warnings);
         }
-        if (settings.LayoutStyle != SmartTagLayoutStyle.StandardNearHost)
+        if (settings.LayoutStyle is not SmartTagLayoutStyle.StandardNearHost)
         {
             // Accepted Standard keeps its existing final snap. Standard V2
             // owns a separate bounded local-rail alignment pass and
@@ -4111,6 +5389,21 @@ internal static class SmartTagRevitService
             standardPacked = OptimizeActualRowOrder(standardPacked, snapshot, standard, warnings);
             standardPacked = TranslateActualGroupsAwayFromMep(standardPacked, snapshot, standard, warnings);
             standardPacked = OptimizeActualLeaderLanes(standardPacked, snapshot, standard, warnings);
+            if (standard.AutoSide)
+            {
+                if (standardPacked.Count <= 160)
+                {
+                    standardPacked = OptimizeActualRowOrder(
+                        standardPacked, snapshot, standard, warnings);
+                    standardPacked = OptimizeActualLeaderLanes(
+                        standardPacked, snapshot, standard, warnings);
+                }
+                standardPacked = RepairActualAutoResidualClashes(
+                    standardPacked,
+                    snapshot,
+                    standard,
+                    warnings);
+            }
             // Keep the accepted real-family Standard positions as the true V2
             // baseline. The numeric V2 planner below may make only a bounded
             // local move toward DA/AT; pre-snapping here used to drag otherwise
@@ -4299,14 +5592,23 @@ internal static class SmartTagRevitService
         // nearby measured-family rows because the real project Tag Family can
         // be taller than its preview estimate. The bounded search preserves
         // rail order while eliminating text/text and text/MEP overlaps.
-        int maximumRowAttempts = settings.LayoutStyle == SmartTagLayoutStyle.CompactGroups
-            ? 17
-            : 1;
         double lowerLimit = snapshot.Frame.MinV + settings.TopMargin;
         double upperLimit = snapshot.Frame.MaxV - settings.TopMargin;
         Dictionary<long, (bool RightSide, long Rail)> railKeys = BuildActualRailKeys(
             measured,
             settings);
+        bool twoSidedAuto = settings.AutoSide &&
+                            railKeys.Values.Select(item => item.RightSide)
+                                .Distinct()
+                                .Count() > 1;
+        // One-sided AUTO already produces the desired stable rows. Only a
+        // genuine Left+Right solve needs nearby alternate rows: the Right pass
+        // must be able to step around the complete set of locked Left leaders.
+        int maximumRowAttempts = settings.LayoutStyle == SmartTagLayoutStyle.CompactGroups
+            ? 17
+            : twoSidedAuto
+                ? 9
+                : 1;
         Dictionary<long, double> lockedRows = BuildActualLockedRows(
             measured,
             railKeys,
@@ -4321,7 +5623,16 @@ internal static class SmartTagRevitService
         // on the same rail. This keeps the final Revit result readable and
         // deterministic instead of letting per-tag collision scores reorder it.
         foreach ((AppliedTagWorkItem original, LayoutRect actualBounds) in measured
-                     .OrderByDescending(item => lockedRows.TryGetValue(
+                     // For two-sided AUTO, finish Left first. Right is then
+                     // packed with every accepted Left text box and leader in
+                     // reservedBoxes/reservedLeaders, so cross-side conflicts
+                     // cannot be hidden by the former row-interleaved order.
+                     .OrderBy(item => twoSidedAuto && railKeys.TryGetValue(
+                         item.Item.Record.TagKey,
+                         out (bool RightSide, long Rail) sideKey)
+                             ? sideKey.RightSide ? 1 : 0
+                             : 0)
+                     .ThenByDescending(item => lockedRows.TryGetValue(
                          item.Item.Record.TagKey,
                          out double row)
                              ? row
@@ -6001,46 +7312,54 @@ internal static class SmartTagRevitService
         // predictable on a dense view but are enough to clear the residual
         // crossings that a four-pass cap left behind.
         int maximumPasses = denseView ? 10 : Math.Min(result.Count, 32);
-        for (int pass = 0; pass < maximumPasses; pass++)
+        IReadOnlyList<bool?> sidePasses = BuildActualSidePasses(result, settings);
+        foreach (bool? rightSidePass in sidePasses)
         {
-            (List<AppliedTagWorkItem> Items, List<int> Changed,
-                int LeaderReduction, int TextReduction, int ModelReduction,
-                double Travel)? best = null;
-            foreach (List<int> block in BuildActualRowOrderBlocks(
-                         result,
-                         settings,
-                         hostGroups))
+            for (int pass = 0; pass < maximumPasses; pass++)
             {
-                if (block.Count < 2) continue;
-                var conflictDegrees = block.ToDictionary(
-                    index => index,
-                    index => CountLeaderConflictDegree(
-                        index,
-                        result,
-                        settings.Clearance));
-                if (conflictDegrees.Values.All(degree => degree == 0)) continue;
-                HashSet<int> movementCandidates = conflictDegrees
-                    .Where(pair => pair.Value > 0)
-                    .OrderByDescending(pair => pair.Value)
-                    .ThenBy(pair => result[pair.Key].Record.ElementId)
-                    .Take(denseView ? 8 : 24)
-                    .Select(pair => pair.Key)
-                    .ToHashSet();
+                (List<AppliedTagWorkItem> Items, List<int> Changed,
+                    int LeaderReduction, int TextReduction, int ModelReduction,
+                    double Travel)? best = null;
+                foreach (List<int> block in BuildActualRowOrderBlocks(
+                             result,
+                             settings,
+                             hostGroups))
+                {
+                    if (block.Count < 2 ||
+                        rightSidePass is bool expectedRight &&
+                        IsActualRightSide(result[block[0]]) != expectedRight)
+                    {
+                        continue;
+                    }
+                    var conflictDegrees = block.ToDictionary(
+                        index => index,
+                        index => CountLeaderConflictDegree(
+                            index,
+                            result,
+                            settings.Clearance));
+                    if (conflictDegrees.Values.All(degree => degree == 0)) continue;
+                    HashSet<int> movementCandidates = conflictDegrees
+                        .Where(pair => pair.Value > 0)
+                        .OrderByDescending(pair => pair.Value)
+                        .ThenBy(pair => result[pair.Key].Record.ElementId)
+                        .Take(denseView ? 8 : 24)
+                        .Select(pair => pair.Key)
+                        .ToHashSet();
 
-                List<int> orderedIndices = block
+                    List<int> orderedIndices = block
                     .OrderByDescending(index => result[index].Placement.Head.V)
                     .ThenBy(index => result[index].Record.ElementId)
                     .ToList();
-                List<double> rowSlots = orderedIndices
+                    List<double> rowSlots = orderedIndices
                     .Select(index => result[index].Placement.Head.V)
                     .ToList();
-                int maximumJump = denseView
+                    int maximumJump = denseView
                     ? Math.Min(4, orderedIndices.Count - 1)
                     : orderedIndices.Count <= 24
                     ? orderedIndices.Count - 1
                     : 12;
-                for (int from = 0; from < orderedIndices.Count; from++)
-                {
+                    for (int from = 0; from < orderedIndices.Count; from++)
+                    {
                     int movingIndex = orderedIndices[from];
                     if (!movementCandidates.Contains(movingIndex)) continue;
                     int minimumTo = Math.Max(0, from - maximumJump);
@@ -6122,25 +7441,27 @@ internal static class SmartTagRevitService
                                 travel);
                         }
                     }
+                    }
                 }
-            }
 
-            if (best is null) break;
-            foreach (int changedIndex in best.Value.Changed)
-            {
-                result[changedIndex].Tag.TagHeadPosition += snapshot.UpDirection *
-                    (best.Value.Items[changedIndex].Placement.Head.V -
-                     result[changedIndex].Placement.Head.V);
+                if (best is null) break;
+                foreach (int changedIndex in best.Value.Changed)
+                {
+                    result[changedIndex].Tag.TagHeadPosition += snapshot.UpDirection *
+                        (best.Value.Items[changedIndex].Placement.Head.V -
+                         result[changedIndex].Placement.Head.V);
+                }
+                result = best.Value.Items;
+                reorderPasses++;
+                shiftedTags += best.Value.Changed.Count;
+                totalLeaderReduction += best.Value.LeaderReduction;
             }
-            result = best.Value.Items;
-            reorderPasses++;
-            shiftedTags += best.Value.Changed.Count;
-            totalLeaderReduction += best.Value.LeaderReduction;
         }
 
         warnings.Add(
             $"Row-order analysis: {reorderPasses} group reorder(s), {shiftedTags} tag row shift(s), " +
-            $"{totalLeaderReduction} leader conflict(s) removed; X rails and row spacing unchanged.");
+            $"{totalLeaderReduction} leader conflict(s) removed; X rails and row spacing unchanged" +
+            (sidePasses.Count == 2 ? "; AUTO solved Left then Right." : "."));
         return result;
     }
 
@@ -6159,9 +7480,17 @@ internal static class SmartTagRevitService
                                       item.Record.Layout.Anchor.U;
                       long rail = (long)Math.Round(
                           item.Placement.TagBounds.MinU / railResolution);
-                      int hostGroup = hostGroups.TryGetValue(
-                          item.Record.TagKey,
-                          out int group) ? group : 0;
+                      // AUTO columns from separate local host groups still
+                      // share the same visual rail. Keeping HostGroup in this
+                      // key made every group optimize in isolation, so their
+                      // leaders could cross after the groups were combined.
+                      // Merge only AUTO rails; explicit Left/Right modes retain
+                      // the user's local grouping and established row order.
+                      int hostGroup = settings.AutoSide
+                          ? 0
+                          : hostGroups.TryGetValue(
+                              item.Record.TagKey,
+                              out int group) ? group : 0;
                       return (rightSide, rail, hostGroup);
                   }))
         {
@@ -6323,27 +7652,33 @@ internal static class SmartTagRevitService
         bool denseView = result.Count > 300;
         int maximumPasses = denseView ? 1 : 3;
         int maximumRoutes = denseView ? 80 : result.Count;
-        for (int pass = 0; pass < maximumPasses; pass++)
+        IReadOnlyList<bool?> sidePasses = BuildActualSidePasses(result, settings);
+        foreach (bool? rightSidePass in sidePasses)
         {
-            bool changed = false;
-            // Rebuild the conflict graph every pass. Routes cutting the most
-            // neighbors are the constrained backbone and are solved first;
-            // clear straight leaders remain immutable below.
-            List<int> processingOrder = Enumerable.Range(0, result.Count)
-                .OrderByDescending(index => CountLeaderConflictDegree(
-                    index,
-                    result,
-                    settings.Clearance))
-                .ThenBy(index => result[index].Placement.UsesElbow ? 1 : 0)
-                .ThenByDescending(index => Math.Abs(
-                    result[index].Placement.Head.V -
-                    result[index].Record.Layout.Anchor.V))
-                .ThenByDescending(index => result[index].Placement.Head.V)
-                .ThenBy(index => result[index].Record.ElementId)
-                .Take(maximumRoutes)
-                .ToList();
-            foreach (int index in processingOrder)
+            for (int pass = 0; pass < maximumPasses; pass++)
             {
+                bool changed = false;
+                // In two-sided AUTO, finish and lock every Left route before
+                // solving Right. The second phase therefore treats all final
+                // Left leaders as reservations instead of letting the global
+                // conflict-degree order alternate unpredictably between sides.
+                List<int> processingOrder = Enumerable.Range(0, result.Count)
+                    .Where(index => rightSidePass is null ||
+                                    IsActualRightSide(result[index]) == rightSidePass.Value)
+                    .OrderByDescending(index => CountLeaderConflictDegree(
+                        index,
+                        result,
+                        settings.Clearance))
+                    .ThenBy(index => result[index].Placement.UsesElbow ? 1 : 0)
+                    .ThenByDescending(index => Math.Abs(
+                        result[index].Placement.Head.V -
+                        result[index].Record.Layout.Anchor.V))
+                    .ThenByDescending(index => result[index].Placement.Head.V)
+                    .ThenBy(index => result[index].Record.ElementId)
+                    .Take(maximumRoutes)
+                    .ToList();
+                foreach (int index in processingOrder)
+                {
                 AppliedTagWorkItem current = result[index];
                 var otherBoxes = new List<LayoutRect>(result.Count - 1);
                 var otherLeaders = new List<LayoutSegment>((result.Count - 1) * 2);
@@ -6483,12 +7818,258 @@ internal static class SmartTagRevitService
                     improvements++;
                     changed = true;
                 }
+                }
+                if (!changed) break;
             }
-            if (!changed) break;
         }
-        warnings.Add($"Leader-lane refinement: {improvements} route improvement(s) applied on the fixed rails.");
+        warnings.Add($"Leader-lane refinement: {improvements} route improvement(s) applied on the fixed rails" +
+            (sidePasses.Count == 2 ? "; AUTO solved and locked Left before Right." : "."));
         return result;
     }
+
+    private static List<AppliedTagWorkItem> RepairActualAutoResidualClashes(
+        IReadOnlyList<AppliedTagWorkItem> source,
+        SmartTagViewSnapshot snapshot,
+        SmartTagLayoutSettings settings,
+        ICollection<string> warnings)
+    {
+        var result = source.ToList();
+        if (result.Count < 2)
+        {
+            warnings.Add("AUTO residual repair: no multi-tag route requires repair.");
+            return result;
+        }
+
+        int repaired = 0;
+        bool denseView = result.Count > 300;
+        int maximumRoutes = denseView ? 100 : result.Count;
+        IReadOnlyList<bool?> sidePasses = BuildActualSidePasses(result, settings);
+        foreach (bool? rightSidePass in sidePasses)
+        {
+            // Two bounded passes are sufficient for a later route to reuse a
+            // row released earlier in the same Left/Right phase. Clear tags are
+            // immutable; only a route with a measured critical conflict enters
+            // this search.
+            for (int pass = 0; pass < 2; pass++)
+            {
+                bool changed = false;
+                List<int> order = Enumerable.Range(0, result.Count)
+                    .Where(index => rightSidePass is null ||
+                                    IsActualRightSide(result[index]) == rightSidePass.Value)
+                    .OrderByDescending(index => CountLeaderConflictDegree(
+                        index,
+                        result,
+                        settings.Clearance))
+                    .ThenByDescending(index => Math.Abs(
+                        result[index].Placement.Head.V -
+                        result[index].Record.Layout.Anchor.V))
+                    .ThenBy(index => result[index].Record.ElementId)
+                    .Take(maximumRoutes)
+                    .ToList();
+
+                foreach (int index in order)
+                {
+                    AppliedTagWorkItem current = result[index];
+                    BuildReservations(index, out List<LayoutRect> otherBoxes,
+                        out List<LayoutSegment> otherLeaders);
+                    LayoutSegment currentHorizontal = new(
+                        current.Placement.Head,
+                        current.Placement.Elbow);
+                    LayoutSegment? currentTail = current.Placement.UsesElbow
+                        ? new LayoutSegment(current.Placement.End,
+                            current.Placement.Elbow)
+                        : null;
+                    int currentCritical = ActualCriticalConflictCount(
+                        current.Record,
+                        current.Placement.TagBounds,
+                        currentHorizontal,
+                        currentTail,
+                        otherBoxes,
+                        otherLeaders,
+                        snapshot.Obstacles,
+                        settings);
+                    int currentScore = ActualCollisionScore(
+                        current.Record,
+                        current.Placement.TagBounds,
+                        currentHorizontal,
+                        currentTail,
+                        otherBoxes,
+                        otherLeaders,
+                        snapshot.Obstacles,
+                        settings);
+                    if (currentCritical == 0 && currentScore == 0) continue;
+
+                    TagLayoutPlacement best = current.Placement;
+                    int bestCritical = currentCritical;
+                    int bestScore = currentScore;
+                    double bestTravel = double.MaxValue;
+                    double rowStep = Math.Max(
+                        current.Placement.TagBounds.Height + settings.RowSpacing,
+                        settings.Clearance * 2.0 + 0.0025);
+                    int maximumRowSteps = denseView ? 4 : 6;
+                    for (int step = 0; step <= maximumRowSteps; step++)
+                    {
+                        int[] directions = step == 0 ? [0] : [-1, 1];
+                        foreach (int direction in directions)
+                        {
+                            double row = current.Placement.Head.V +
+                                         direction * step * rowStep;
+                            double shiftV = row - current.Placement.Head.V;
+                            LayoutRect candidateBounds = ShiftRect(
+                                current.Placement.TagBounds,
+                                0.0,
+                                shiftV);
+                            if (candidateBounds.MinV < snapshot.Frame.MinV + settings.TopMargin ||
+                                candidateBounds.MaxV > snapshot.Frame.MaxV - settings.TopMargin)
+                            {
+                                continue;
+                            }
+
+                            bool moved = Math.Abs(
+                                row - current.Record.Layout.Anchor.V) > 1e-7;
+                            double[] laneFactors = moved
+                                ? [0.0, 0.25, 0.5, 0.75, 1.0]
+                                : [-1.0, -0.5, 0.0, 0.5, 1.0];
+                            double[] verticalFactors = moved
+                                ? [-1.0, 0.0, 1.0]
+                                : [0.0];
+                            foreach (double laneFactor in laneFactors)
+                            foreach (double verticalFactor in verticalFactors)
+                            {
+                                LayoutPoint head = new(current.Placement.Head.U, row);
+                                LayoutPoint end = CreateActualHostEnd(
+                                    current.Record.Layout,
+                                    head.U,
+                                    head.V,
+                                    moved,
+                                    settings,
+                                    laneFactor,
+                                    verticalFactor);
+                                LayoutPoint elbow = moved
+                                    ? new LayoutPoint(end.U, row)
+                                    : end;
+                                var horizontal = new LayoutSegment(head, elbow);
+                                LayoutSegment? tail = moved
+                                    ? new LayoutSegment(end, elbow)
+                                    : null;
+                                int critical = ActualCriticalConflictCount(
+                                    current.Record,
+                                    candidateBounds,
+                                    horizontal,
+                                    tail,
+                                    otherBoxes,
+                                    otherLeaders,
+                                    snapshot.Obstacles,
+                                    settings);
+                                int score = ActualCollisionScore(
+                                    current.Record,
+                                    candidateBounds,
+                                    horizontal,
+                                    tail,
+                                    otherBoxes,
+                                    otherLeaders,
+                                    snapshot.Obstacles,
+                                    settings);
+                                double travel = Math.Abs(shiftV) +
+                                                Math.Abs(row - current.Record.Layout.Anchor.V) * 0.1 +
+                                                DistanceSquared(end, current.Record.Layout.Anchor) * 0.01;
+                                if (critical < bestCritical ||
+                                    critical == bestCritical && score < bestScore ||
+                                    critical == bestCritical && score == bestScore &&
+                                    travel < bestTravel - 1e-10)
+                                {
+                                    bestCritical = critical;
+                                    bestScore = score;
+                                    bestTravel = travel;
+                                    best = current.Placement with
+                                    {
+                                        Head = head,
+                                        End = end,
+                                        Elbow = elbow,
+                                        TagBounds = candidateBounds,
+                                        UsesElbow = moved,
+                                        UsesFreeEnd = moved,
+                                        HasClash = critical > 0
+                                    };
+                                }
+                            }
+                        }
+                    }
+
+                    bool improves = bestCritical < currentCritical ||
+                                    bestCritical == currentCritical && bestScore < currentScore;
+                    if (!improves) continue;
+                    double acceptedShiftV = best.Head.V - current.Placement.Head.V;
+                    if (Math.Abs(acceptedShiftV) > 1e-8)
+                    {
+                        current.Tag.TagHeadPosition +=
+                            snapshot.UpDirection * acceptedShiftV;
+                    }
+                    result[index] = current with { Placement = best };
+                    repaired++;
+                    changed = true;
+                }
+                if (!changed) break;
+            }
+        }
+
+        int residual = 0;
+        for (int index = 0; index < result.Count; index++)
+        {
+            AppliedTagWorkItem current = result[index];
+            BuildReservations(index, out List<LayoutRect> otherBoxes,
+                out List<LayoutSegment> otherLeaders);
+            LayoutSegment horizontal = new(current.Placement.Head,
+                current.Placement.Elbow);
+            LayoutSegment? tail = current.Placement.UsesElbow
+                ? new LayoutSegment(current.Placement.End, current.Placement.Elbow)
+                : null;
+            if (ActualCriticalConflictCount(
+                    current.Record,
+                    current.Placement.TagBounds,
+                    horizontal,
+                    tail,
+                    otherBoxes,
+                    otherLeaders,
+                    snapshot.Obstacles,
+                    settings) > 0)
+            {
+                residual++;
+            }
+        }
+        warnings.Add(
+            $"AUTO residual repair: {repaired} conflicting route adjustment(s); " +
+            $"{residual} tag route(s) still constrained on fixed rails.");
+        return result;
+
+        void BuildReservations(
+            int movingIndex,
+            out List<LayoutRect> boxes,
+            out List<LayoutSegment> leaders)
+        {
+            boxes = new List<LayoutRect>(result.Count - 1);
+            leaders = new List<LayoutSegment>((result.Count - 1) * 2);
+            for (int otherIndex = 0; otherIndex < result.Count; otherIndex++)
+            {
+                if (otherIndex == movingIndex) continue;
+                TagLayoutPlacement other = result[otherIndex].Placement;
+                boxes.Add(other.TagBounds);
+                leaders.Add(new LayoutSegment(other.Head, other.Elbow));
+                if (other.UsesElbow)
+                    leaders.Add(new LayoutSegment(other.End, other.Elbow));
+            }
+        }
+    }
+
+    private static IReadOnlyList<bool?> BuildActualSidePasses(
+        IReadOnlyList<AppliedTagWorkItem> source,
+        SmartTagLayoutSettings settings)
+        => SmartTagStackRouting.BuildLeftThenRightPasses(
+            source.Select(IsActualRightSide),
+            settings.AutoSide);
+
+    private static bool IsActualRightSide(AppliedTagWorkItem item) =>
+        item.Placement.Head.U >= item.Record.Layout.Anchor.U;
 
     private static int CountLeaderConflictDegree(
         int index,
@@ -7622,6 +9203,15 @@ internal static class SmartTagRevitService
     {
         public bool AllowElement(Element element) =>
             element is IndependentTag;
+
+        public bool AllowReference(Reference reference, XYZ position) => false;
+    }
+
+    private sealed class ClashElementSelectionFilter : ISelectionFilter
+    {
+        public bool AllowElement(Element element) =>
+            element is not IndependentTag &&
+            element.Category?.CategoryType == CategoryType.Model;
 
         public bool AllowReference(Reference reference, XYZ position) => false;
     }

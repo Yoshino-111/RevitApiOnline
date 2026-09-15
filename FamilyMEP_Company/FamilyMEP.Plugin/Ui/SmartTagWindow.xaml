@@ -209,7 +209,7 @@
                                                     Margin="0,7,0,0" TextWrapping="Wrap" Foreground="#FFCC80"/>
                                      </StackPanel>
                                  </Border>
-                                 <TextBlock Text="Standard remains unchanged. Standard V2 is the isolated test copy: Duct follows nearby DA/AT rails and analyzes text/leader/model clashes before Write."
+                                 <TextBlock Text="Standard remains unchanged. Standard V2 arranges and validates Duct + DA/AT."
                                             TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="10" Margin="0,4,0,0"/>
                                  <TextBlock Text="Side" Style="{StaticResource FieldLabel}"/>
                                  <ComboBox x:Name="side_combo" SelectedIndex="0">
