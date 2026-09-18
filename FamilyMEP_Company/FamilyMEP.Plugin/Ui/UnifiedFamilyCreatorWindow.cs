@@ -968,15 +968,15 @@ internal sealed class UnifiedFamilyCreatorWindow : Window
         double bodyD = preset?.BodyDiameter ?? 93.7;
         const double cx = 380;
         const double cy = 275;
-        double bodyW = Math.Clamp(length * 2.2, 260, 390);
-        double bodyH = Math.Clamp(bodyD * 1.8, 125, 195);
+        double bodyW = PortableMath.Clamp(length * 2.2, 260, 390);
+        double bodyH = PortableMath.Clamp(bodyD * 1.8, 125, 195);
         double left = cx - bodyW / 2;
         double top = cy - bodyH / 2;
         AddRectangle(left - 32, top + 28, 68, bodyH - 56, Brush(185, 192, 201), Ink, 2, 10);
         AddRectangle(left + bodyW - 36, top + 28, 68, bodyH - 56, Brush(185, 192, 201), Ink, 2, 10);
         AddEllipse(left + 20, top, bodyW - 40, bodyH, Brush(220, 225, 231), Ink, 2);
         AddEllipse(left + 50, top + 9, bodyW - 100, bodyH - 18, Brush(196, 204, 214), Muted, 1.5);
-        double port = Math.Clamp(dn * 1.35, 48, 100);
+        double port = PortableMath.Clamp(dn * 1.35, 48, 100);
         AddEllipse(left - 45, cy - port / 2, 38, port, Brush(43, 47, 52), Orange, 4);
         AddEllipse(left + bodyW + 7, cy - port / 2, 38, port, Brush(43, 47, 52), Orange, 4);
         AddRectangle(cx - 24, top - 72, 48, 82, Brush(184, 192, 202), Ink, 2, 6);

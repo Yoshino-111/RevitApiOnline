@@ -4,11 +4,11 @@ namespace FamilyMEP.Plugin.DrainConnection;
 
 internal static class DrainGeometry
 {
-    // Case 01 is specifically a 45-degree Y. "Automatic angle" in the UI
-    // means automatic roll/orientation toward the main, not permission to
-    // substitute a different included-angle junction.
+    // Used only when no verified family/routing angle was supplied. Real model
+    // angles are passed by the controller and tried individually.
     private static readonly double[] AutoFittingAngles = [45.0];
-    private static readonly double[] OffsetMultipliers = [1.35, 1.20, 1.50];
+    private static readonly double[] OffsetMultipliers =
+        [0.35, 0.50, 0.75, 1.0, 1.25, 1.50, 2.0, 2.50, 3.0, 4.0];
     private static readonly double[] Case02NearMainMultipliers = [3.0, 4.0, 5.0];
     private const double Epsilon = 1e-9;
 
@@ -26,14 +26,14 @@ internal static class DrainGeometry
         IReadOnlyList<double>? offsetMultipliers = null)
     {
         // Cast-iron 45-degree elbows commonly need substantially more takeout
-        // than a generic short-radius fitting. Case 05 is pipe-only, so reserve
+        // than a generic short-radius fitting. Case 06 is pipe-only, so reserve
         // real construction length before asking Revit to place any elbow.
         double minimumOffset = minimumOffsetOverride ??
-            Math.Max(Mm(120), branchDiameter * 1.50);
+            Math.Max(Mm(20), branchDiameter * 0.25);
         double minimumStub = minimumStubOverride ??
-            Math.Max(Mm(150), branchDiameter * 1.50);
+            Math.Max(Mm(20), branchDiameter * 0.20);
         double endClearance = endClearanceOverride ??
-            Math.Max(Mm(100), mainDiameter * 1.5);
+            Math.Max(Mm(25), mainDiameter * 0.35);
         var routes = new List<DrainRoute>();
         DrainSide[] sides = [DrainSide.Left, DrainSide.Right];
 
@@ -41,54 +41,30 @@ internal static class DrainGeometry
         {
             foreach (double fittingAngle in fittingAngles ?? AutoFittingAngles)
             {
-                double compensatedPlanAngle;
-                try
+                // Pipe geometry is fixed at exactly 45 degrees in plan. The
+                // measured Y connector angle is fitting metadata only.
+                const double planAngle = 45.0;
+                foreach (double multiplier in offsetMultipliers ?? OffsetMultipliers)
                 {
-                    // A routing-preference Y is defined by its real 3D included
-                    // angle. Compensate its plan angle for both branch and main
-                    // slopes before any Revit elements are created.
-                    compensatedPlanAngle = CompensatedPlanAngle(
-                        mainStart,
-                        mainEnd,
-                        settings.SlopePercent,
-                        fittingAngle);
-                }
-                catch (InvalidOperationException)
-                {
-                    continue;
-                }
-
-                // Some junction families are authored as a true 3D-angle
-                // fitting; others lock their reference geometry to 45 degrees
-                // in plan and allow connector slope adjustment. Try both.
-                double[] planAngles =
-                    Math.Abs(compensatedPlanAngle - fittingAngle) < 1e-6
-                        ? [compensatedPlanAngle]
-                        : [fittingAngle, compensatedPlanAngle];
-                foreach (double planAngle in planAngles)
-                {
-                    foreach (double multiplier in offsetMultipliers ?? OffsetMultipliers)
+                    try
                     {
-                        try
-                        {
-                            DrainRoute route = Build(
-                                mainStart,
-                                mainEnd,
-                                drainOrigin,
-                                side,
-                                settings.SlopePercent,
-                                planAngle,
-                                fittingAngle,
-                                Math.Max(minimumOffset, branchDiameter * multiplier),
-                                minimumStub,
-                                endClearance);
-                            if (IsDeviceToMainFlowValid(route))
-                                routes.Add(route);
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            // The next angle/compact-offset candidate may fit.
-                        }
+                        DrainRoute route = Build(
+                            mainStart,
+                            mainEnd,
+                            drainOrigin,
+                            side,
+                            settings.SlopePercent,
+                            planAngle,
+                            fittingAngle,
+                            Math.Max(minimumOffset, branchDiameter * multiplier),
+                            minimumStub,
+                            endClearance);
+                        if (IsDeviceToMainFlowValid(route))
+                            routes.Add(route);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // The next compact-offset candidate may fit.
                     }
                 }
             }
@@ -98,16 +74,7 @@ internal static class DrainGeometry
         // main's high end; for a level main endpoint 0 is the deterministic
         // tie-break direction. If that side cannot host the selected family,
         // creation automatically continues with the opposite side.
-        IEnumerable<DrainRoute> flowSafeRoutes = routes;
-        if (MainHasPlanUphillDirection(mainStart, mainEnd))
-        {
-            // For a sloped main, the wye branch must face the high end. Trying
-            // the opposite roll can make Revit reverse the branch and invalidate
-            // the gravity route even when a fitting can technically be placed.
-            flowSafeRoutes = flowSafeRoutes.Where(route => AutoSideScore(route) > Epsilon);
-        }
-
-        return flowSafeRoutes
+        return routes
             .OrderByDescending(AutoSideScore)
             .ThenByDescending(route =>
                 Math.Round(
@@ -125,7 +92,17 @@ internal static class DrainGeometry
         double mainDiameter,
         IReadOnlyList<double>? fittingAngles = null)
     {
-        double sourceCompact = Math.Max(Mm(35), branchDiameter * 1.35);
+        // Two elbows consume both ends of this short device-side diagonal.
+        // Long socket/cast-iron fittings need about twice the clearance of the
+        // former 1.35-D segment. Try the spacious route first and retain
+        // smaller candidates for short layouts and compact UPVC fittings.
+        double[] sourceCompactCandidates =
+        [
+            Math.Max(Mm(250), branchDiameter * 2.5),
+            Math.Max(Mm(200), branchDiameter * 2.0),
+            Math.Max(Mm(150), branchDiameter * 1.5),
+            Math.Max(Mm(100), branchDiameter)
+        ];
         double minimumStub = Math.Max(Mm(20), branchDiameter * 0.20);
         double endClearance = Math.Max(Mm(100), mainDiameter * 1.5);
         var routes = new List<DrainRoute>();
@@ -134,25 +111,8 @@ internal static class DrainGeometry
         {
             foreach (double fittingAngle in fittingAngles ?? AutoFittingAngles)
             {
-                double compensatedPlanAngle;
-                try
-                {
-                    compensatedPlanAngle = CompensatedPlanAngle(
-                        mainStart,
-                        mainEnd,
-                        settings.SlopePercent,
-                        fittingAngle);
-                }
-                catch (InvalidOperationException)
-                {
-                    continue;
-                }
-
-                double[] planAngles =
-                    Math.Abs(compensatedPlanAngle - fittingAngle) < 1e-6
-                        ? [compensatedPlanAngle]
-                        : [fittingAngle, compensatedPlanAngle];
-                foreach (double planAngle in planAngles)
+                const double planAngle = 45.0;
+                foreach (double sourceCompact in sourceCompactCandidates.Distinct())
                 {
                     foreach (double multiplier in Case02NearMainMultipliers)
                     {
@@ -190,6 +150,7 @@ internal static class DrainGeometry
             flowSafeRoutes = flowSafeRoutes.Where(route => AutoSideScore(route) > Epsilon);
         return flowSafeRoutes
             .OrderByDescending(AutoSideScore)
+            .ThenByDescending(route => route.CompactOffset)
             .ThenByDescending(route =>
                 Math.Round(Math.Min(route.MainParameter, 1.0 - route.MainParameter), 6))
             .ToList();
@@ -199,6 +160,7 @@ internal static class DrainGeometry
         XYZ mainStart,
         XYZ mainEnd,
         XYZ drainOrigin,
+        DrainSettings settings,
         double branchDiameter,
         double mainDiameter)
     {
@@ -210,24 +172,28 @@ internal static class DrainGeometry
         var routes = new List<DrainRoute>();
         foreach (DrainSide side in new[] { DrainSide.Left, DrainSide.Right })
         {
-            foreach (double multiplier in new[] { 1.0, 1.35, 1.7 })
+            foreach (double fittingAngle in settings.JunctionAngles ?? AutoFittingAngles)
             {
-                try
+                foreach (double multiplier in new[] { 1.0, 1.35, 1.7 })
                 {
-                    routes.Add(BuildCase03(
-                        mainStart,
-                        mainEnd,
-                        drainOrigin,
-                        side,
-                        baseOffset * multiplier,
-                        minimumStub,
-                        endClearance,
-                        branchDiameter,
-                        mainDiameter));
-                }
-                catch (InvalidOperationException)
-                {
-                    // Continue with the next along-main offset and direction.
+                    try
+                    {
+                        routes.Add(BuildCase03(
+                            mainStart,
+                            mainEnd,
+                            drainOrigin,
+                            side,
+                            fittingAngle,
+                            baseOffset * multiplier,
+                            minimumStub,
+                            endClearance,
+                            branchDiameter,
+                            mainDiameter));
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Continue with the next Y angle, offset and direction.
+                    }
                 }
             }
         }
@@ -249,46 +215,54 @@ internal static class DrainGeometry
         double branchDiameter,
         double mainDiameter)
     {
-        // Keep the device-side two-45 pair as compact as the selected routing
-        // fittings permit. Revit will reject candidates shorter than the real
-        // fitting takeout and the service will continue with the next size.
-        double baseSourceCompact = Math.Max(Mm(35), branchDiameter * 0.60);
-        double baseDiagonalOffset = Math.Max(
-            Mm(150),
-            Math.Max(branchDiameter, mainDiameter) * 1.50);
+        // Reserve the user-entered clear pipe plus estimated socket takeout for
+        // both 45-degree elbows. BuildCase04 uses the vertical component of the
+        // diagonal, so convert the desired center-to-center length through sin45.
+        // Creation verifies the real post-trim pipe and retries larger candidates.
+        double largestDiameter = Math.Max(branchDiameter, mainDiameter);
+        double requestedMiddleLength = Mm(Math.Max(
+            0.0,
+            settings.Case04MiddlePipeLengthMm));
+        double estimatedPairTakeout = Math.Max(Mm(150), branchDiameter * 2.5);
+        double baseSourceCompact =
+            (requestedMiddleLength + estimatedPairTakeout) * Math.Sin(Math.PI / 4.0);
+        double baseDiagonalOffset = Math.Max(Mm(150), largestDiameter * 2.0);
         // Keep a clearly vertical drop below the floor drain before the compact
         // double-45 transition begins. A tiny stub made the diagonal appear to
         // start directly at (and tilt) the device connector.
-        double minimumStub = Math.Max(Mm(250), branchDiameter * 2.50);
+        double minimumStub = Math.Max(Mm(20), branchDiameter * 0.20);
         var routes = new List<DrainRoute>();
         double slopePercent = Math.Abs(settings.SlopePercent);
-        foreach (double compactMultiplier in new[] { 0.75, 1.0, 1.25, 1.50, 2.0, 2.50, 3.0 })
+        // UPVC socket elbows used by many Revit 2020 templates have much
+        // shorter real takeout than the conservative cast-iron estimate.
+        // Include shorter pre-trim candidates; creation still measures the
+        // finished clear middle pipe and rejects anything below the requested
+        // length, so the user's 200 mm requirement remains authoritative.
+        foreach (double compactMultiplier in new[]
+                 { 0.50, 0.65, 0.80, 1.0, 1.25, 1.50, 2.0, 2.50, 3.0 })
         {
             double sourceCompact = baseSourceCompact * compactMultiplier;
-            foreach (double diagonalMultiplier in new[] { 0.75, 1.0, 1.25, 1.50, 2.0 })
+            foreach (double diagonalMultiplier in new[]
+                     { 0.50, 0.75, 1.0, 1.25, 1.50, 2.0, 2.50, 3.0 })
             {
                 double diagonalOffset = baseDiagonalOffset * diagonalMultiplier;
                 foreach (double side in new[] { 1.0, -1.0 })
                 {
-                    foreach (double approachHand in new[] { 1.0, -1.0 })
+                    try
                     {
-                        try
-                        {
-                            routes.Add(BuildCase04(
-                                mainInside,
-                                mainEndpoint,
-                                drainOrigin,
-                                slopePercent,
-                                sourceCompact,
-                                diagonalOffset,
-                                minimumStub,
-                                side,
-                                approachHand));
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            // Try the mirrored Case 02 layout and compact lengths.
-                        }
+                        routes.Add(BuildCase04(
+                            mainInside,
+                            mainEndpoint,
+                            drainOrigin,
+                            slopePercent,
+                            sourceCompact,
+                            diagonalOffset,
+                            minimumStub,
+                            side));
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Try the mirrored Case 02 layout and compact lengths.
                     }
                 }
             }
@@ -300,7 +274,7 @@ internal static class DrainGeometry
             .ToList();
     }
 
-    public static IReadOnlyList<DrainRoute> BuildCase06Candidates(
+    public static IReadOnlyList<DrainRoute> BuildCase05Candidates(
         XYZ mainInside,
         XYZ mainEndpoint,
         XYZ drainOrigin,
@@ -308,68 +282,47 @@ internal static class DrainGeometry
         double branchDiameter,
         double mainDiameter)
     {
-        double dx = mainEndpoint.X - mainInside.X;
-        double dy = mainEndpoint.Y - mainInside.Y;
-        double originalPlanLength = Math.Sqrt(dx * dx + dy * dy);
-        if (originalPlanLength <= Epsilon)
-            throw new InvalidOperationException(
-                "Case 06 requires a main endpoint with a usable plan direction.");
+        // Case 05 is deliberately the same gravity route as Case 01. The only
+        // difference is the final operation on the main: Case 01 inserts a Y;
+        // Case 05 trims the surplus main tail and places a 45-degree elbow at
+        // the automatically calculated Case-01 junction point.
+        //
+        // Try a realistic cast-iron elbow takeout first. The generic Case 01
+        // order starts at 0.35 DN; for DN70/DN100 those very short candidates
+        // make Revit create and roll back several failed fitting transactions
+        // before it reaches a usable offset. Keep every fallback, but put the
+        // commonly successful 1.5-2.0 DN offsets at the front.
+        double[] fastCase05Offsets =
+            [1.50, 2.00, 1.25, 2.50, 1.00, 3.00, 0.75, 4.00, 0.50, 0.35];
+        static double MainElbowAngleError(DrainRoute route)
+        {
+            XYZ branchAway = (route.DiagonalEnd - route.WyePoint).Normalize();
+            XYZ mainAway = (route.MainStart - route.WyePoint).Normalize();
+            double cosine = Math.Abs(branchAway.DotProduct(mainAway));
+            cosine = Math.Max(-1.0, Math.Min(1.0, cosine));
+            double angle = Math.Acos(cosine) * 180.0 / Math.PI;
+            return Math.Abs(angle - 45.0);
+        }
 
-        double ux = dx / originalPlanLength;
-        double uy = dy / originalPlanLength;
-        double mainSlope = (mainEndpoint.Z - mainInside.Z) / originalPlanLength;
-        double sourceDistance = Math.Sqrt(
-            Math.Pow(drainOrigin.X - mainEndpoint.X, 2) +
-            Math.Pow(drainOrigin.Y - mainEndpoint.Y, 2));
-        double searchExtension = Math.Max(
-            Mm(3000),
-            sourceDistance * 3.0 + Math.Max(Mm(500), mainDiameter * 5.0));
-        XYZ virtualEnd = new(
-            mainEndpoint.X + ux * searchExtension,
-            mainEndpoint.Y + uy * searchExtension,
-            mainEndpoint.Z + mainSlope * searchExtension);
-
-        IReadOnlyList<DrainRoute> virtualRoutes = BuildCandidates(
-            mainInside,
-            virtualEnd,
-            drainOrigin,
-            settings,
-            branchDiameter,
-            mainDiameter,
-            minimumOffsetOverride: Math.Max(Mm(20), branchDiameter * 0.35),
-            minimumStubOverride: Math.Max(Mm(40), branchDiameter * 0.40),
-            endClearanceOverride: Math.Max(Mm(20), mainDiameter * 0.25),
-            offsetMultipliers: new[] { 0.35, 0.50, 0.75, 1.0, 1.25, 1.50, 2.0 });
-        // The old open endpoint is only a point along the pipe after Case 06
-        // extends it to the calculated elbow. It therefore needs no fixed
-        // 100/150 mm clearance. Real fitting takeout is validated by Revit for
-        // each compact candidate during creation.
-        double endpointClearance = Mm(1);
-        double continuationLength = Math.Max(Mm(300), mainDiameter * 3.0);
-        return virtualRoutes
-            .Where(route =>
-                (route.WyePoint.X - mainEndpoint.X) * ux +
-                (route.WyePoint.Y - mainEndpoint.Y) * uy >= endpointClearance)
-            .OrderBy(route => route.CompactOffset)
-            .ThenBy(route => route.BranchPlanLength)
-            .Select(route =>
-            {
-                XYZ continuationEnd = new(
-                    route.WyePoint.X + ux * continuationLength,
-                    route.WyePoint.Y + uy * continuationLength,
-                    route.WyePoint.Z + mainSlope * continuationLength);
-                return route with
-                {
-                    MainStart = mainInside,
-                    MainEnd = virtualEnd,
-                    CaseNumber = 6,
-                    MainExtensionElbow = continuationEnd
-                };
-            })
+        return BuildCandidates(
+                mainInside,
+                mainEndpoint,
+                drainOrigin,
+                settings,
+                branchDiameter,
+                mainDiameter,
+                fittingAngles: [45.0],
+                offsetMultipliers: fastCase05Offsets)
+            .Select(route => route with { CaseNumber = 5 })
+            // BuildCandidates also includes the uncompensated plan-angle
+            // fallback used by some Y families. Case 05 ends with an elbow,
+            // so always try the route whose real 3D main angle is 45 degrees
+            // before that fallback can trigger another Revit rollback.
+            .OrderBy(MainElbowAngleError)
             .ToList();
     }
 
-    public static IReadOnlyList<DrainRoute> BuildCase05Candidates(
+    public static IReadOnlyList<DrainRoute> BuildCase06Candidates(
         XYZ mainStart,
         XYZ mainEnd,
         XYZ drainOrigin,
@@ -385,7 +338,7 @@ internal static class DrainGeometry
         double rollMagnitude = Math.Abs(settings.YRollAngleDegrees);
         if (rollMagnitude <= 0.1 || rollMagnitude >= 89.9)
             throw new InvalidOperationException(
-                "Case 05 Y Vertical Roll must be greater than 0.1° and less than 89.9°." );
+                "Case 06 Y Vertical Roll must be greater than 0.1° and less than 89.9°." );
 
         // The source-side straight pipe uses Branch Slope. After the extra
         // 45-degree elbow, the final leg is governed only by the fixed 45-degree
@@ -400,7 +353,7 @@ internal static class DrainGeometry
                     {
                         try
                         {
-                            routes.AddRange(BuildCase05SplitSlopeRoutes(
+                            routes.AddRange(BuildCase06SplitSlopeRoutes(
                                 mainStart,
                                 mainEnd,
                                 drainOrigin,
@@ -428,7 +381,7 @@ internal static class DrainGeometry
         }
         if (routes.Count == 0)
             throw new InvalidOperationException(
-                $"Case 05 cannot connect with Y vertical roll {rollMagnitude:0.###}° and " +
+                $"Case 06 cannot connect with Y vertical roll {rollMagnitude:0.###}° and " +
                 $"source-side slope {settings.SlopePercent:0.###}%. " +
                 string.Join(" ", failures.Distinct().TakeLast(4)));
         double preferredCompact = Math.Max(Mm(150), branchDiameter * 1.50);
@@ -441,7 +394,7 @@ internal static class DrainGeometry
             .ToList();
     }
 
-    private static IReadOnlyList<DrainRoute> BuildCase05SplitSlopeRoutes(
+    private static IReadOnlyList<DrainRoute> BuildCase06SplitSlopeRoutes(
         XYZ mainStart,
         XYZ mainEnd,
         XYZ drainOrigin,
@@ -459,7 +412,7 @@ internal static class DrainGeometry
         double mainPlanLength = Math.Sqrt(
             mainVector.X * mainVector.X + mainVector.Y * mainVector.Y);
         if (mainLength <= Epsilon || mainPlanLength <= Epsilon)
-            throw new InvalidOperationException("Case 05 requires a non-vertical main.");
+            throw new InvalidOperationException("Case 06 requires a non-vertical main.");
 
         double mainX = mainEnd.X - mainStart.X;
         double mainY = mainEnd.Y - mainStart.Y;
@@ -477,7 +430,7 @@ internal static class DrainGeometry
         double sourceDistanceToMain = Math.Sqrt(offsetX * offsetX + offsetY * offsetY);
         if (sourceDistanceToMain <= Mm(100))
             throw new InvalidOperationException(
-                "Case 05 needs the device to be offset from the main in plan.");
+                "Case 06 needs the device to be offset from the main in plan.");
 
         double sourceSlope = sourceSlopePercent / 100.0;
         double sourcePlanFactor = 1.0 / Math.Sqrt(1.0 + sourceSlope * sourceSlope);
@@ -540,7 +493,7 @@ internal static class DrainGeometry
 
         double minimumParameter = minimumEndClearance / mainLength;
         if (minimumParameter >= 0.49)
-            throw new InvalidOperationException("The selected main is too short for Case 05.");
+            throw new InvalidOperationException("The selected main is too short for Case 06.");
 
         var routes = new List<DrainRoute>();
         int planIntersections = 0;
@@ -610,7 +563,7 @@ internal static class DrainGeometry
                 sourceSlopePercent,
                 side,
                 nearMainElbow,
-                5));
+                6));
         }
 
         if (routes.Count == 0)
@@ -659,7 +612,8 @@ internal static class DrainGeometry
         XYZ mainStart,
         XYZ mainEnd,
         double branchSlopePercent,
-        double fittingAngleDegrees)
+        double fittingAngleDegrees,
+        DrainSide side)
     {
         double dx = mainEnd.X - mainStart.X;
         double dy = mainEnd.Y - mainStart.Y;
@@ -667,7 +621,12 @@ internal static class DrainGeometry
         if (mainPlanLength <= Epsilon)
             throw new InvalidOperationException("Case 01 requires a non-vertical main.");
 
-        double mainUphillSlope = Math.Abs(mainEnd.Z - mainStart.Z) / mainPlanLength;
+        // The acute run leg used by a Y changes with the selected plan side.
+        // Keep the sign of the main slope in that direction. Using Abs here
+        // produced 2.0185% after fitting insertion on a 2% sloped main.
+        double runDirectionSign = side == DrainSide.Left ? 1.0 : -1.0;
+        double mainUphillSlope =
+            (mainEnd.Z - mainStart.Z) / mainPlanLength * runDirectionSign;
         double branchUphillSlope = branchSlopePercent / 100.0;
         double fittingCosine = Math.Cos(fittingAngleDegrees * Math.PI / 180.0);
 
@@ -886,6 +845,7 @@ internal static class DrainGeometry
         XYZ mainEnd,
         XYZ drainOrigin,
         DrainSide side,
+        double fittingAngleDegrees,
         double alongMainOffset,
         double minimumStubLength,
         double minimumEndClearance,
@@ -928,21 +888,23 @@ internal static class DrainGeometry
         double wyeY = mainStart.Y + uy * wyeDistance;
         double wyeZ = mainStart.Z + (mainEnd.Z - mainStart.Z) * mainParameter;
 
-        // The branch runs from the Y back toward the device projection. Rotate
-        // upward by 45 degrees from the local main slope in this vertical plane.
+        // The branch runs from the Y back toward the device projection. Its
+        // vertical-plane angle follows the real selected Y connector angle, so
+        // different project families do not get forced into a nominal 45° shape.
         double mainSlope = (mainEnd.Z - mainStart.Z) / mainPlanLength;
         double directionAlongMain = -factor;
         double localMainAngle = Math.Atan(mainSlope * directionAlongMain);
-        double branchAngle = localMainAngle + Math.PI / 4.0;
+        double branchAngle = localMainAngle +
+            45.0 * Math.PI / 180.0;
         if (branchAngle <= 5.0 * Math.PI / 180.0 ||
             branchAngle >= 85.0 * Math.PI / 180.0)
             throw new InvalidOperationException(
-                "Case 03 cannot form a 45 degree vertical-plane branch on this main slope.");
+                $"Case 03 cannot form a {fittingAngleDegrees:0.###} degree vertical-plane Y branch on this main slope.");
         double branchRise = alongMainOffset * Math.Tan(branchAngle);
         double elbowZ = wyeZ + branchRise;
         if (drainOrigin.Z - elbowZ < minimumStubLength)
             throw new InvalidOperationException(
-                "Case 03 does not have enough vertical clearance for the standing pipe and 45 degree elbow.");
+                "Case 03 does not have enough vertical clearance for the standing pipe and routed elbow.");
 
         XYZ elbowPoint = new(footX, footY, elbowZ);
         return new DrainRoute(
@@ -956,7 +918,7 @@ internal static class DrainGeometry
             alongMainOffset,
             mainParameter,
             0.0,
-            45.0,
+            fittingAngleDegrees,
             Math.Tan(branchAngle) * 100.0,
             side,
             null,
@@ -971,8 +933,7 @@ internal static class DrainGeometry
         double sourceCompact,
         double diagonalOffset,
         double minimumStubLength,
-        double side,
-        double approachHand)
+        double side)
     {
         double dx = mainEndpoint.X - mainInside.X;
         double dy = mainEndpoint.Y - mainInside.Y;
@@ -1015,31 +976,15 @@ internal static class DrainGeometry
         (double vx, double vy) = Rotate(ux, uy, side * firstTurn);
         (double wx, double wy) = Rotate(ux, uy, side * (firstTurn + secondTurn));
 
-        // Solve the compact two-45 device transition exactly in 3D. Its tiny
-        // roll compensates the main slope so Revit receives true 45-degree
-        // connector angles instead of 44.99/45.01 degrees.
-        double straightFactor = 1.0 / Math.Sqrt(1.0 + branchSlope * branchSlope);
-        XYZ routeStraight = new(
-            -wx * straightFactor,
-            -wy * straightFactor,
-            -branchSlope * straightFactor);
-        XYZ verticalRoute = -XYZ.BasisZ;
-        double endDirectionDot = verticalRoute.DotProduct(routeStraight);
-        XYZ approachBase =
-            (verticalRoute + routeStraight) *
-            (fittingCosine / (1.0 + endDirectionDot));
-        XYZ approachNormal = verticalRoute.CrossProduct(routeStraight).Normalize();
-        double normalSquared = 1.0 - approachBase.DotProduct(approachBase);
-        if (normalSquared < -1e-8)
-            throw new InvalidOperationException(
-                "The device transition cannot form two fixed 45 degree elbows.");
-        XYZ approachAxis = (
-            approachBase +
-            approachNormal *
-            (approachHand * Math.Sqrt(Math.Max(0.0, normalSquared)))).Normalize();
-        if (approachAxis.Z >= -Epsilon)
-            throw new InvalidOperationException(
-                "The device transition does not fall toward the main.");
+        // Match Case 02 at the device: first drop vertically, then use a 45-degree
+        // diagonal in the vertical plane of the following straight branch. Do
+        // not roll this diagonal sideways to compensate for the small pipe slope;
+        // that roll made the Case 04 drop look skewed in plan.
+        double inverseRootTwo = 1.0 / Math.Sqrt(2.0);
+        XYZ approachAxis = new(
+            -wx * inverseRootTwo,
+            -wy * inverseRootTwo,
+            -inverseRootTwo);
         double approachLength = sourceCompact / -approachAxis.Z;
         XYZ sourcePairPlan = drainOrigin + approachAxis * approachLength;
 
@@ -1057,7 +1002,7 @@ internal static class DrainGeometry
         double extensionPlan =
             ux * (qx - vx * diagonalPlan - wx * straightPlan) +
             uy * (qy - vy * diagonalPlan - wy * straightPlan);
-        if (extensionPlan <= Mm(50) || straightPlan <= Mm(50))
+        if (extensionPlan <= Mm(20) || straightPlan <= Mm(20))
             throw new InvalidOperationException(
                 "The selected endpoint does not leave enough length for the two 45 degree turns.");
 

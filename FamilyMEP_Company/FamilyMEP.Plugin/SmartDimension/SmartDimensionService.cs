@@ -47,7 +47,7 @@ internal static class SmartDimensionService
 
     public static SmartDimensionResult Create(
         UIApplication application,
-        IReadOnlySet<string> selectedCategoryKeys,
+        ISet<string> selectedCategoryKeys,
         double maximumElementGapMillimeters = 2500.0)
     {
         UIDocument uidoc = application.ActiveUIDocument
@@ -90,7 +90,7 @@ internal static class SmartDimensionService
             .Where(element => IsSupported(element, selectedCategoryKeys))
             .ToList();
 
-        targets = targets.GroupBy(item => item.Id.Value).Select(group => group.First()).ToList();
+        targets = targets.GroupBy(item => item.Id.CompatValue()).Select(group => group.First()).ToList();
         if (targets.Count == 0)
         {
             return new SmartDimensionResult(
@@ -117,7 +117,7 @@ internal static class SmartDimensionService
         using var transaction = new Transaction(document, "FamilyMEP - Smart Dimensions");
         transaction.Start();
         int replaced = DeleteOwnedDimensions(
-            document, view, targets.Select(item => item.Id.Value).ToHashSet());
+            document, view, targets.Select(item => item.Id.CompatValue()).ToHashSet());
         if (replaced > 0)
             messages.Add($"Replaced {replaced} previous Smart Dim dimension(s) in this selection.");
         obstacles = CollectObstacles(document, view, basis);
@@ -137,7 +137,7 @@ internal static class SmartDimensionService
         // remaining devices. Give every still-uncovered family/round MEP
         // element its own two-datum horizontal and vertical fallback pass.
         List<Element> uncoveredCenterElements = centerTargets
-            .Where(item => !dimensionedTargetIds.Contains(item.Id.Value))
+            .Where(item => !dimensionedTargetIds.Contains(item.Id.CompatValue()))
             .ToList();
         int recoveredCenterDimensions = CreateUncoveredCenterFallbacks(
             document, view, uncoveredCenterElements, basis, datums, obstacles,
@@ -153,8 +153,8 @@ internal static class SmartDimensionService
         if (created > 0)
             uidoc.RefreshActiveView();
 
-        int dimensionedCenters = centerTargets.Count(item => dimensionedTargetIds.Contains(item.Id.Value));
-        int dimensionedDucts = selectedDucts.Count(item => dimensionedTargetIds.Contains(item.Id.Value));
+        int dimensionedCenters = centerTargets.Count(item => dimensionedTargetIds.Contains(item.Id.CompatValue()));
+        int dimensionedDucts = selectedDucts.Count(item => dimensionedTargetIds.Contains(item.Id.CompatValue()));
         int grouped = Math.Max(0, dimensionedDucts - ductDimensions);
         int skipped = centerTargets.Count - dimensionedCenters + selectedDucts.Count - dimensionedDucts;
         int gridDatums = datums.Count(item => item.Kind == "Grid");
@@ -257,7 +257,7 @@ internal static class SmartDimensionService
         Line? line = ChooseClearLine(
             basis, measureAxis, offsetAxis,
             minMeasure, maxMeasure, minOffset, maxOffset,
-            view.Scale, obstacles, instance.Id.Value);
+            view.Scale, obstacles, instance.Id.CompatValue());
         if (line is null)
         {
             AddMessage(messages, $"{instance.Name}: no empty lane was found for the {firstType}/{secondType} size dimension.");
@@ -266,7 +266,7 @@ internal static class SmartDimensionService
         ReferenceArray references = ToReferenceArray(first, second);
         if (!TryCreateDimension(document, view, line, references, existing, messages, out Dimension? dimension))
             return 0;
-        MarkOwned(dimension!, [instance.Id.Value]);
+        MarkOwned(dimension!, [instance.Id.CompatValue()]);
         AddDimensionObstacle(document, view, dimension!, basis, obstacles);
         return 1;
     }
@@ -334,7 +334,7 @@ internal static class SmartDimensionService
         foreach (CenterTarget target in targets
                      .OrderByDescending(item => item.Center.DotProduct(basis.Up))
                      .ThenBy(item => item.Center.DotProduct(basis.Right))
-                     .ThenBy(item => item.Element.Id.Value))
+                     .ThenBy(item => item.Element.Id.CompatValue()))
         {
             double x = target.Center.DotProduct(basis.Right);
             double y = target.Center.DotProduct(basis.Up);
@@ -483,7 +483,7 @@ internal static class SmartDimensionService
                     AddMessage(messages,
                         $"Duplicate {(horizontal ? "horizontal" : "vertical")} station chain skipped to prevent overlapping dimensions.");
                     foreach (CenterTarget item in chain)
-                        dimensionedTargetIds.Add(item.Element.Id.Value);
+                        dimensionedTargetIds.Add(item.Element.Id.CompatValue());
                     continue;
                 }
 
@@ -527,10 +527,10 @@ internal static class SmartDimensionService
                         obstacles, existing, messages, dimensionedTargetIds, preferredSide);
                     continue;
                 }
-                MarkOwned(dimension!, chain.Select(item => item.Element.Id.Value));
+                MarkOwned(dimension!, chain.Select(item => item.Element.Id.CompatValue()));
                 createdStationChains.Add(stationSignature);
                 AddDimensionObstacle(document, view, dimension!, basis, obstacles);
-                foreach (CenterTarget item in chain) dimensionedTargetIds.Add(item.Element.Id.Value);
+                foreach (CenterTarget item in chain) dimensionedTargetIds.Add(item.Element.Id.CompatValue());
                 created++;
             }
         }
@@ -571,7 +571,7 @@ internal static class SmartDimensionService
             Line? line = ChooseClearLine(
                 basis, measureAxis, offsetAxis,
                 minMeasure, maxMeasure, minOffset, maxOffset,
-                view.Scale, obstacles, target.Element.Id.Value, preferredSide,
+                view.Scale, obstacles, target.Element.Id.CompatValue(), preferredSide,
                 alignedLaneOffset: null,
                 collisionMinMeasure: localMinMeasure,
                 collisionMaxMeasure: localMaxMeasure);
@@ -580,9 +580,9 @@ internal static class SmartDimensionService
                     document, view, line,
                     ToReferenceArray(datumPair.Lower.Reference, center, datumPair.Upper.Reference),
                     existing, messages, out Dimension? dimension)) continue;
-            MarkOwned(dimension!, [target.Element.Id.Value]);
+            MarkOwned(dimension!, [target.Element.Id.CompatValue()]);
             AddDimensionObstacle(document, view, dimension!, basis, obstacles);
-            dimensionedTargetIds.Add(target.Element.Id.Value);
+            dimensionedTargetIds.Add(target.Element.Id.CompatValue());
             created++;
         }
         return created;
@@ -877,10 +877,10 @@ internal static class SmartDimensionService
                 existing, messages, out dimension);
             if (chainCreated)
             {
-                MarkOwned(dimension!, members.Select(item => item.Duct.Id.Value));
+                MarkOwned(dimension!, members.Select(item => item.Duct.Id.CompatValue()));
                 AddDimensionObstacle(document, view, dimension!, basis, obstacles);
                 foreach (DuctEdgeTarget member in members)
-                    dimensionedTargetIds.Add(member.Duct.Id.Value);
+                    dimensionedTargetIds.Add(member.Duct.Id.CompatValue());
                 created++;
                 continue;
             }
@@ -893,9 +893,9 @@ internal static class SmartDimensionService
                 if (!TryCreateDuctWidthDimension(
                         document, view, member.Duct, basis, datums, obstacles, existing,
                         messages, out Dimension? fallback)) continue;
-                MarkOwned(fallback!, [member.Duct.Id.Value]);
+                MarkOwned(fallback!, [member.Duct.Id.CompatValue()]);
                 AddDimensionObstacle(document, view, fallback!, basis, obstacles);
-                dimensionedTargetIds.Add(member.Duct.Id.Value);
+                dimensionedTargetIds.Add(member.Duct.Id.CompatValue());
                 created++;
             }
         }
@@ -912,7 +912,7 @@ internal static class SmartDimensionService
                      .OrderBy(item => item.HorizontalRun)
                      .ThenBy(item => (item.MinOffset + item.MaxOffset) * 0.5)
                      .ThenBy(item => (item.MinMeasure + item.MaxMeasure) * 0.5)
-                     .ThenBy(item => item.Duct.Id.Value))
+                     .ThenBy(item => item.Duct.Id.CompatValue()))
         {
             double measure = (target.MinMeasure + target.MaxMeasure) * 0.5;
             double offset = (target.MinOffset + target.MaxOffset) * 0.5;
@@ -1034,7 +1034,7 @@ internal static class SmartDimensionService
         Line? line = ChooseClearLine(
             basis, widthAxis, ductAxis,
             minWidth, maxWidth, minLength, maxLength,
-            view.Scale, obstacles, duct.Id.Value,
+            view.Scale, obstacles, duct.Id.CompatValue(),
             collisionMinMeasure: localMinWidth,
             collisionMaxMeasure: localMaxWidth);
         if (line is null)
@@ -1228,7 +1228,7 @@ internal static class SmartDimensionService
             foreach (Element element in new FilteredElementCollector(document, view.Id)
                          .OfCategory(category).WhereElementIsNotElementType())
             {
-                if (!ids.Add(element.Id.Value)) continue;
+                if (!ids.Add(element.Id.CompatValue())) continue;
                 AddObstacle(element, view, basis, false, result);
             }
         }
@@ -1236,7 +1236,7 @@ internal static class SmartDimensionService
                      .WhereElementIsNotElementType()
                      .Where(item => item is IndependentTag or TextNote or Dimension))
         {
-            if (!ids.Add(element.Id.Value)) continue;
+            if (!ids.Add(element.Id.CompatValue())) continue;
             AddObstacle(element, view, basis, true, result);
         }
         return result;
@@ -1252,7 +1252,7 @@ internal static class SmartDimensionService
         IReadOnlyList<XYZ> points = GetBoundingPoints(element, view);
         if (points.Count == 0) return;
         List<Point2> projected = points.Select(basis.Project).ToList();
-        result.Add(new Obstacle(element.Id.Value, Rect2.FromPoints(projected), annotation));
+        result.Add(new Obstacle(element.Id.CompatValue(), Rect2.FromPoints(projected), annotation));
     }
 
     private static void AddDimensionObstacle(
@@ -1275,7 +1275,7 @@ internal static class SmartDimensionService
                 Point2 start = basis.Project(curve.GetEndPoint(0));
                 Point2 end = basis.Project(curve.GetEndPoint(1));
                 obstacles.Add(new Obstacle(
-                    dimension.Id.Value,
+                    dimension.Id.CompatValue(),
                     Rect2.FromPoints(start, end, 3.5 * paper),
                     true));
             }
@@ -1362,7 +1362,7 @@ internal static class SmartDimensionService
                     XYZ position = segment.TextPosition;
                     (XYZ moved, Rect2 box, bool changed, int side) = FindClearTextPosition(
                         position, segment.Origin, length, value, textHeight, widthFactor,
-                        view, basis, measureAxis, offsetAxis, occupied, dimension.Id.Value);
+                        view, basis, measureAxis, offsetAxis, occupied, dimension.Id.CompatValue());
                     if (changed)
                     {
                         segment.TextPosition = moved;
@@ -1383,7 +1383,7 @@ internal static class SmartDimensionService
                 XYZ position = dimension.TextPosition;
                 (XYZ moved, Rect2 box, bool changed, int side) = FindClearTextPosition(
                     position, dimension.Origin, length, value, textHeight, widthFactor,
-                    view, basis, measureAxis, offsetAxis, occupied, dimension.Id.Value);
+                    view, basis, measureAxis, offsetAxis, occupied, dimension.Id.CompatValue());
                 if (changed)
                 {
                     dimension.TextPosition = moved;
@@ -1483,7 +1483,7 @@ internal static class SmartDimensionService
         double paperHeight = type?.get_Parameter(BuiltInParameter.TEXT_SIZE)?.AsDouble() ?? 2.5 / 304.8;
         double widthFactor = type?.get_Parameter(BuiltInParameter.TEXT_WIDTH_SCALE)?.AsDouble() ?? 1.0;
         return (Math.Max(2.2 * paper, paperHeight * Math.Max(1, view.Scale)),
-            Math.Clamp(widthFactor, 0.5, 2.0));
+            PortableMath.Clamp(widthFactor, 0.5, 2.0));
     }
 
     private static string SafeValueString(Func<string?> getter)
@@ -1515,7 +1515,7 @@ internal static class SmartDimensionService
     private static int DeleteOwnedDimensions(
         Document document,
         View view,
-        IReadOnlySet<long> selectedTargetIds)
+        ISet<long> selectedTargetIds)
     {
         Schema? schema = Schema.Lookup(OwnershipSchemaId);
         if (schema is null) return 0;
@@ -1581,12 +1581,12 @@ internal static class SmartDimensionService
     private static string StableReference(Document document, Reference reference)
     {
         try { return reference.ConvertToStableRepresentation(document); }
-        catch { return $"{reference.ElementId.Value}:{reference.LinkedElementId.Value}:{reference.ElementReferenceType}"; }
+        catch { return $"{reference.ElementId.CompatValue()}:{reference.LinkedElementId.CompatValue()}:{reference.ElementReferenceType}"; }
     }
 
     private static bool NeedsDetailedSize(FamilyInstance instance)
     {
-        long category = instance.Category?.Id.Value ?? 0;
+        long category = instance.Category?.Id.CompatValue() ?? 0;
         return category is
             (long)BuiltInCategory.OST_MechanicalEquipment or
             (long)BuiltInCategory.OST_PlumbingFixtures or
@@ -1683,9 +1683,9 @@ internal static class SmartDimensionService
                width.AsDouble() > Epsilon && height.AsDouble() > Epsilon;
     }
 
-    private static bool IsSupported(Element element, IReadOnlySet<string> selectedCategoryKeys)
+    private static bool IsSupported(Element element, ISet<string> selectedCategoryKeys)
     {
-        long category = element.Category?.Id.Value ?? 0;
+        long category = element.Category?.Id.CompatValue() ?? 0;
         if (!selectedCategoryKeys.Contains(category.ToString())) return false;
         if (element is MEPCurve)
         {

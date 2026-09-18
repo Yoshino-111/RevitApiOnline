@@ -1137,7 +1137,7 @@ internal sealed class SmartTagController : IDisposable
     {
         double oldZoom = PreviewScale.ScaleX;
         double factor = args.Delta > 0 ? 1.18 : 1.0 / 1.18;
-        double newZoom = Math.Clamp(oldZoom * factor, 1.0, 8.0);
+        double newZoom = PortableMath.Clamp(oldZoom * factor, 1.0, 8.0);
         WpfPoint cursor = args.GetPosition(PreviewSurface);
         if (Math.Abs(newZoom - 1.0) <= 1e-8)
         {
@@ -1232,13 +1232,13 @@ internal sealed class SmartTagController : IDisposable
         WpfPoint bottomRight = transform.Map(new LayoutPoint(
             placement.TagBounds.MaxU,
             placement.TagBounds.MinV));
-        double width = Math.Clamp(bottomRight.X - topLeft.X, 28, 220);
-        double height = Math.Clamp(bottomRight.Y - topLeft.Y, 12, 64);
+        double width = PortableMath.Clamp(bottomRight.X - topLeft.X, 28, 220);
+        double height = PortableMath.Clamp(bottomRight.Y - topLeft.Y, 12, 64);
         var text = new TextBlock
         {
             Text = placement.Label,
             Foreground = Brushes.Black,
-            FontSize = Math.Clamp(height * 0.36, 7, 11),
+            FontSize = PortableMath.Clamp(height * 0.36, 7, 11),
             TextWrapping = TextWrapping.Wrap,
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center
@@ -1411,7 +1411,7 @@ internal sealed class SmartTagController : IDisposable
     }
 
     private List<SmartTagRecord> SelectedRecordsForLayout(
-        IReadOnlySet<string> groups,
+        ISet<string> groups,
         SmartTagLayoutSettings? settings = null)
     {
         if (_snapshot is null) return [];
@@ -1467,7 +1467,7 @@ internal sealed class SmartTagController : IDisposable
                                  _ductDensitySampleViewId == _snapshot.ViewId
             ? sample
             : _snapshot.Frame;
-        IReadOnlySet<long> retainedDuctKeys = SmartTagDuctDensity.Select(
+        ISet<long> retainedDuctKeys = SmartTagDuctDensity.Select(
             densityCandidates,
             densityZone);
         Dictionary<long, long> preferredCompanionByDuct = densityCandidates
@@ -1980,7 +1980,7 @@ internal sealed class SmartTagController : IDisposable
         return double.TryParse(
                    Find<WpfTextBox>("row_spacing_tb").Text,
                    out double value) &&
-               double.IsFinite(value) &&
+               PortableMath.IsFinite(value) &&
                value >= 0.0
             ? value
             : 1.0;
@@ -2050,11 +2050,11 @@ internal sealed class SmartTagController : IDisposable
             ? rightCandidate
             : leftCandidate >= workArea.Left
                 ? leftCandidate
-                : Math.Clamp(
+                : PortableMath.Clamp(
                     _window.Left + _window.ActualWidth - width - 18,
                     workArea.Left + gap,
                     workArea.Right - width - gap);
-        double top = Math.Clamp(
+        double top = PortableMath.Clamp(
             _window.Top + 92,
             workArea.Top + gap,
             workArea.Bottom - height - gap);
@@ -2074,11 +2074,11 @@ internal sealed class SmartTagController : IDisposable
         double height = _quickAlignWindow.ActualHeight > 1
             ? _quickAlignWindow.ActualHeight
             : _quickAlignWindow.Height;
-        _quickAlignWindow.Left = Math.Clamp(
+        _quickAlignWindow.Left = PortableMath.Clamp(
             _quickAlignWindow.Left + horizontalChange,
             workArea.Left,
             workArea.Right - width);
-        _quickAlignWindow.Top = Math.Clamp(
+        _quickAlignWindow.Top = PortableMath.Clamp(
             _quickAlignWindow.Top + verticalChange,
             workArea.Top,
             workArea.Bottom - height);

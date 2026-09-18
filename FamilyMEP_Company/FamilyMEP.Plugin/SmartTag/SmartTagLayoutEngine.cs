@@ -583,7 +583,7 @@ internal static class SmartTagLayoutEngine
             maximumShift = Math.Min(maximumShift, top - halfHeight - centers[index]);
         }
         double shift = minimumShift <= maximumShift
-            ? Math.Clamp(0.0, minimumShift, maximumShift)
+            ? PortableMath.Clamp(0.0, minimumShift, maximumShift)
             : 0.0;
 
         return Enumerable.Range(0, count).ToDictionary(
@@ -602,7 +602,7 @@ internal static class SmartTagLayoutEngine
         // clamp for every feasible view; for an impossible range, use the unique
         // minimax center and let the existing clash flag report the overflow.
         return minimum <= maximum
-            ? Math.Clamp(value, minimum, maximum)
+            ? PortableMath.Clamp(value, minimum, maximum)
             : (minimum + maximum) * 0.5;
     }
 
@@ -733,7 +733,7 @@ internal static class SmartTagLayoutEngine
         }
         double parameter = ((point.U - segment.Start.U) * du +
                             (point.V - segment.Start.V) * dv) / lengthSquared;
-        parameter = Math.Clamp(parameter, 0.0, 1.0);
+        parameter = PortableMath.Clamp(parameter, 0.0, 1.0);
         double nearestU = segment.Start.U + parameter * du;
         double nearestV = segment.Start.V + parameter * dv;
         return Math.Sqrt(Math.Pow(point.U - nearestU, 2) + Math.Pow(point.V - nearestV, 2));

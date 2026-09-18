@@ -1602,7 +1602,7 @@ internal static class ValveBuilderService
             .FirstOrDefault(parameter =>
                 parameter.Definition.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         if (existing is not null) return existing;
-#if REVIT2020 || REVIT2021 || REVIT2022 || REVIT2023
+#if REVIT2020 || REVIT2021 || REVIT2022
         return manager.AddParameter(
             name,
             BuiltInParameterGroup.PG_GRAPHICS,
@@ -2374,7 +2374,7 @@ internal static class ValveBuilderService
         double initialOuterDiameter = CurrentValue(manager, outerDiameter, Mm(24));
         double initialInnerDiameter = CurrentValue(manager, innerDiameter, Mm(16));
         double outerRadius = Math.Max(initialOuterDiameter / 2, Mm(1));
-        double innerRadius = Math.Clamp(
+        double innerRadius = PortableMath.Clamp(
             initialInnerDiameter / 2,
             Mm(0.5),
             outerRadius - Mm(0.5));
@@ -2508,7 +2508,7 @@ internal static class ValveBuilderService
         double initialAf = CurrentValue(manager, acrossFlats, Mm(30));
         double initialInnerDiameter = CurrentValue(manager, innerDiameter, Mm(18));
         double outerRadius = initialAf / Math.Sqrt(3);
-        double innerRadius = Math.Clamp(
+        double innerRadius = PortableMath.Clamp(
             initialInnerDiameter / 2,
             Mm(0.5),
             initialAf / 2 - Mm(0.5));
@@ -2800,7 +2800,7 @@ internal static class ValveBuilderService
             .FirstOrDefault(parameter =>
                 parameter.Definition.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         if (existing is not null) return existing;
-#if REVIT2020 || REVIT2021 || REVIT2022 || REVIT2023
+#if REVIT2020 || REVIT2021 || REVIT2022
         return manager.AddParameter(name, BuiltInParameterGroup.PG_GEOMETRY, ParameterType.Length, false);
 #else
         return manager.AddParameter(name, GroupTypeId.Geometry, SpecTypeId.Length, false);
@@ -2813,7 +2813,7 @@ internal static class ValveBuilderService
             .FirstOrDefault(parameter =>
                 parameter.Definition.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         if (existing is not null) return existing;
-#if REVIT2020 || REVIT2021 || REVIT2022 || REVIT2023
+#if REVIT2020 || REVIT2021 || REVIT2022
         return manager.AddParameter(name, BuiltInParameterGroup.PG_IDENTITY_DATA, ParameterType.Text, false);
 #else
         return manager.AddParameter(name, GroupTypeId.IdentityData, SpecTypeId.String.Text, false);
@@ -2844,7 +2844,7 @@ internal static class ValveBuilderService
                 ? request.PortDiameterMm
                 : request.NominalDiameterMm);
         double boreRadius = Math.Max(portDiameter / 2, Mm(5));
-        double bandWidth = Math.Clamp(bodyLength * 0.055, Mm(2.2), Mm(5.5));
+        double bandWidth = PortableMath.Clamp(bodyLength * 0.055, Mm(2.2), Mm(5.5));
         double leftEndLength = bodyStart + totalLength / 2 + bandWidth;
         double rightEndStart = bodyEnd - bandWidth;
         double rightEndLength = totalLength / 2 - rightEndStart;
@@ -2939,7 +2939,7 @@ internal static class ValveBuilderService
             bodyRadius * 1.14,
             height - Mm(23));
         double bonnetStart = bodyRadius * 0.58;
-        double bonnetHeight = Math.Clamp(bodyDiameter * 0.23, Mm(10), Mm(34));
+        double bonnetHeight = PortableMath.Clamp(bodyDiameter * 0.23, Mm(10), Mm(34));
         double stemStart = bonnetStart + bonnetHeight * 0.62;
         double stemHeight = Math.Max(handleBottom - stemStart, Mm(8));
         CreateCylinderZ(
@@ -3654,7 +3654,7 @@ internal static class ValveBuilderService
             }
             catch (Exception exception)
             {
-                result.Warnings.Add($"Element {id.Value}: could not change Type: {exception.Message}");
+                result.Warnings.Add($"Element {id.CompatValue()}: could not change Type: {exception.Message}");
             }
         }
         transaction.Commit();

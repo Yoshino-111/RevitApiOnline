@@ -2757,9 +2757,9 @@ internal static class RevitOperations
     private static ElementId CreateElementId(long value)
     {
 #if REVIT2024 || REVIT2025 || REVIT2026 || REVIT2027
-        return new ElementId(value);
+        return PortableApi.ElementId(value);
 #else
-        return new ElementId(checked((int)value));
+        return PortableApi.ElementId(checked((int)value));
 #endif
     }
 

@@ -12,7 +12,11 @@ internal sealed record DrainSettings(
     double SlopePercent,
     ElementId BranchPipeTypeId,
     double YRollAngleDegrees = 0.0,
-    XYZ? TargetPoint = null);
+    XYZ? TargetPoint = null,
+    ElementId? JunctionSymbolId = null,
+    IReadOnlyList<double>? JunctionAngles = null,
+    IReadOnlyDictionary<long, double>? JunctionAnglesBySymbolId = null,
+    double Case04MiddlePipeLengthMm = 200.0);
 
 internal sealed record DrainRoute(
     XYZ DrainOrigin,
@@ -36,7 +40,11 @@ internal sealed record DrainRoute(
     public double BranchRise => DiagonalEnd.Z - WyePoint.Z;
 }
 
-internal sealed record PipeTypeItem(ElementId Id, string Name)
+internal sealed record PipeTypeItem(
+    ElementId Id,
+    string Name,
+    double? FittingAngleDegrees = null,
+    bool AngleRequiresMeasurement = false)
 {
     public override string ToString() => Name;
 }

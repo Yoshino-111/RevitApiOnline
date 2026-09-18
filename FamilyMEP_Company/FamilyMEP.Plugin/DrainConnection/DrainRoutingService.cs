@@ -6,6 +6,231 @@ namespace FamilyMEP.Plugin.DrainConnection;
 
 internal static class DrainRoutingService
 {
+    private const double TargetYAngleDegrees = 45.0;
+    private const double YAngleToleranceDegrees = 1.0;
+    private const double PipePlanAngleToleranceDegrees = 0.01;
+    private const double MinimumYAngleDegrees =
+        TargetYAngleDegrees - YAngleToleranceDegrees;
+    private const double MaximumYAngleDegrees =
+        TargetYAngleDegrees + YAngleToleranceDegrees;
+
+    public static IReadOnlyList<PipeTypeItem> FindCompatibleLoadedYTypes(
+        Document document)
+    {
+        IReadOnlyList<FamilySymbol> symbols = new FilteredElementCollector(document)
+            .OfClass(typeof(FamilySymbol))
+            .OfCategory(BuiltInCategory.OST_PipeFitting)
+            .Cast<FamilySymbol>()
+            .ToList();
+        var anglesBySymbolId = new Dictionary<long, double>();
+        var anglesRequiringMeasurement = new HashSet<long>();
+
+        var routedJunctionIds = new HashSet<long>();
+        foreach (PipeType pipeType in new FilteredElementCollector(document)
+                     .OfClass(typeof(PipeType))
+                     .Cast<PipeType>())
+        {
+            RoutingPreferenceManager manager = pipeType.RoutingPreferenceManager;
+            int count = manager.GetNumberOfRules(
+                RoutingPreferenceRuleGroupType.Junctions);
+            for (int index = 0; index < count; index++)
+            {
+                ElementId partId = manager.GetRule(
+                    RoutingPreferenceRuleGroupType.Junctions,
+                    index).MEPPartId;
+                if (partId != ElementId.InvalidElementId)
+                    routedJunctionIds.Add(partId.CompatValue());
+            }
+        }
+
+        // Read already placed fittings once. Opening the tool must never place
+        // hundreds of temporary instances or open every family document; that
+        // made large Revit 2020 projects appear frozen for several minutes.
+        var inspectedInstanceSymbolIds = new HashSet<long>();
+        foreach (FamilyInstance instance in new FilteredElementCollector(document)
+                     .OfClass(typeof(FamilyInstance))
+                     .OfCategory(BuiltInCategory.OST_PipeFitting)
+                     .Cast<FamilyInstance>())
+        {
+            long symbolId = instance.Symbol.Id.CompatValue();
+            if (!inspectedInstanceSymbolIds.Add(symbolId) ||
+                anglesBySymbolId.ContainsKey(symbolId))
+                continue;
+            double instanceAngle = MeasureJunctionConnectorAngle(
+                DrainSelection.GetConnectors(instance));
+            if (IsSupportedYAngle(instanceAngle))
+                anglesBySymbolId[symbolId] = instanceAngle;
+        }
+
+        foreach (FamilySymbol symbol in symbols)
+        {
+            long symbolId = symbol.Id.CompatValue();
+            if (anglesBySymbolId.ContainsKey(symbolId) ||
+                IsUnsafeMultiBranchName(symbol))
+                continue;
+
+            bool routedJunction = routedJunctionIds.Contains(symbolId);
+            bool likelyY = IsLikelyYName(symbol);
+            if (!routedJunction && !likelyY)
+                continue;
+
+            double parameterAngle = ResolveAngleParameterDegrees(symbol);
+            if (IsSupportedYAngle(parameterAngle))
+                anglesBySymbolId[symbolId] = parameterAngle;
+            else if (routedJunction || likelyY)
+                // Some protected/vendor Y families expose neither an instance
+                // angle nor an editable type angle. Keep them selectable with
+                // a preview-only seed; Create measures the real three-connector
+                // geometry before any branch pipe is committed.
+            {
+                anglesBySymbolId[symbolId] = 45.0;
+                anglesRequiringMeasurement.Add(symbolId);
+            }
+        }
+
+        return symbols
+            .Where(symbol => anglesBySymbolId.ContainsKey(symbol.Id.CompatValue()))
+            .Select(symbol =>
+            {
+                long symbolId = symbol.Id.CompatValue();
+                bool measureOnCreate = anglesRequiringMeasurement.Contains(symbolId);
+                double angle = anglesBySymbolId[symbolId];
+                string suffix = measureOnCreate
+                    ? "— Y angle measured from connectors on Create"
+                    : $"— Y {angle:0.###}°";
+                return new PipeTypeItem(
+                    symbol.Id,
+                    $"{symbol.FamilyName}: {symbol.Name} {suffix}",
+                    angle,
+                    measureOnCreate);
+            })
+            .OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    private static bool IsUnsafeMultiBranchName(FamilySymbol symbol)
+    {
+        string name = $"{symbol.FamilyName} {symbol.Name}";
+        return name.Contains("double", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("cross", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("pants", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLikelyYName(FamilySymbol symbol)
+    {
+        string name = $"{symbol.FamilyName} {symbol.Name}";
+        return name.Contains("wye", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("lateral", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("branch", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("junction", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("sanitary tee", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("tee sanitary", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static double MeasureJunctionConnectorAngle(
+        IReadOnlyList<Connector> connectors)
+    {
+        if (connectors.Count != 3)
+            return double.NaN;
+        (int first, int second) = MostOppositeConnectorPair(connectors);
+        XYZ firstDirection = connectors[first].CoordinateSystem.BasisZ.Normalize();
+        XYZ secondDirection = connectors[second].CoordinateSystem.BasisZ.Normalize();
+        if (Math.Abs(firstDirection.DotProduct(secondDirection)) < 0.99)
+            return double.NaN;
+        Connector branch = connectors
+            .Where((_, index) => index != first && index != second)
+            .Single();
+        return Math.Min(
+            AcuteDegrees(branch.CoordinateSystem.BasisZ, firstDirection),
+            AcuteDegrees(branch.CoordinateSystem.BasisZ, secondDirection));
+    }
+
+    private static IReadOnlyDictionary<string, double>
+        ReadJunctionAnglesFromFamilyDefinition(
+            Document projectDocument,
+            Family family,
+            IReadOnlyList<FamilySymbol> requestedSymbols)
+    {
+        var result = new Dictionary<string, double>(
+            StringComparer.CurrentCultureIgnoreCase);
+        if (!family.IsEditable || family.IsInPlace)
+            return result;
+
+        Document? familyDocument = null;
+        try
+        {
+            familyDocument = projectDocument.EditFamily(family);
+            FamilyManager manager = familyDocument.FamilyManager;
+            IReadOnlyList<ConnectorElement> connectors =
+                new FilteredElementCollector(familyDocument)
+                    .OfClass(typeof(ConnectorElement))
+                    .Cast<ConnectorElement>()
+                    .Where(connector =>
+                        connector.Domain == Domain.DomainPiping &&
+                        connector.Shape == ConnectorProfileType.Round)
+                    .ToList();
+            if (connectors.Count != 3)
+                return result;
+
+            using var selectType = new Transaction(
+                familyDocument,
+                "Inspect drain Y connector geometry");
+            selectType.Start();
+            try
+            {
+                IReadOnlyList<FamilyType> familyTypes = manager.Types
+                    .Cast<FamilyType>()
+                    .ToList();
+                foreach (FamilySymbol requested in requestedSymbols)
+                {
+                    FamilyType? familyType = familyTypes.FirstOrDefault(type =>
+                        type.Name.Equals(
+                            requested.Name,
+                            StringComparison.CurrentCultureIgnoreCase));
+                    if (familyType is null)
+                        continue;
+                    manager.CurrentType = familyType;
+                    familyDocument.Regenerate();
+                    double angle = MeasureJunctionDirections(
+                        connectors.Select(connector =>
+                            connector.CoordinateSystem.BasisZ).ToList());
+                    if (!double.IsNaN(angle))
+                        result[requested.Name] = angle;
+                }
+            }
+            finally
+            {
+                if (selectType.GetStatus() == TransactionStatus.Started)
+                    selectType.RollBack();
+            }
+        }
+        catch
+        {
+            // Some protected/vendor families cannot be opened. Existing
+            // instances and placement probes remain the first two strategies.
+        }
+        finally
+        {
+            familyDocument?.Close(false);
+        }
+        return result;
+    }
+
+    private static double ResolveAngleParameterDegrees(FamilySymbol symbol)
+    {
+        foreach (Parameter parameter in symbol.Parameters)
+        {
+            if (parameter.StorageType != StorageType.Double ||
+                !parameter.HasValue ||
+                !parameter.Definition.GetDataType().Equals(SpecTypeId.Angle))
+                continue;
+            double degrees = parameter.AsDouble() * 180.0 / Math.PI;
+            if (degrees is >= 1.0 and <= 90.001)
+                return degrees;
+        }
+        return double.NaN;
+    }
+
     public static IReadOnlyList<DrainRoute> Preview(
         Document document,
         ElementId sourceId,
@@ -19,7 +244,8 @@ internal static class DrainRoutingService
             context.SourceConnector.Origin,
             settings,
             context.BranchDiameter,
-            context.MainDiameter);
+            context.MainDiameter,
+            settings.JunctionAngles);
         if (routes.Count == 0)
             throw new InvalidOperationException(
                 "No flow-safe automatic route fits. The branch must rise toward the device and the wye must face the high end of the main. Reduce slope or select another main.");
@@ -39,7 +265,8 @@ internal static class DrainRoutingService
             context.SourceConnector.Origin,
             settings,
             context.BranchDiameter,
-            context.MainDiameter);
+            context.MainDiameter,
+            settings.JunctionAngles);
         if (routes.Count == 0)
             throw new InvalidOperationException(
                 "No Case 02 route fits. This case needs a straight branch, one 45 degree elbow near the main, and enough clearance for the diagonal Y leg.");
@@ -57,11 +284,12 @@ internal static class DrainRoutingService
             context.MainStart,
             context.MainEnd,
             context.SourceConnector.Origin,
+            settings,
             context.BranchDiameter,
             context.MainDiameter);
         if (routes.Count == 0)
             throw new InvalidOperationException(
-                "No Case 03 route fits. The device must be above the main in plan and have enough vertical clearance for one standing pipe, one 45 degree elbow, and the diagonal Y leg.");
+                "No Case 03 route fits. The device must be above the main in plan and have enough vertical clearance for the standing pipe, routed elbow, and selected-Y diagonal leg.");
         return routes;
     }
 
@@ -90,21 +318,21 @@ internal static class DrainRoutingService
             context.MainDiameter);
         if (routes.Count == 0)
             throw new InvalidOperationException(
-                "No Case 04 route fits this open endpoint. Check that the device is high enough above the main for the compact 45 degree fittings.");
+                "No Case 04 route fits this endpoint or trim point. Check that the device is high enough above the main for the compact 45 degree fittings.");
         return routes;
     }
 
-    public static IReadOnlyList<DrainRoute> PreviewCase05(
+    public static IReadOnlyList<DrainRoute> PreviewCase06(
         Document document,
         ElementId sourceId,
         ElementId targetId,
         DrainSettings settings)
     {
         Context context = Resolve(document, sourceId, targetId, settings);
-        return BuildCase05PipeOnlyRoutes(context, settings);
+        return [BuildCase06ReviewRoute(context, settings)];
     }
 
-    public static IReadOnlyList<DrainRoute> PreviewCase06(
+    public static IReadOnlyList<DrainRoute> PreviewCase05(
         Document document,
         ElementId sourceId,
         ElementId targetId,
@@ -117,10 +345,9 @@ internal static class DrainRoutingService
             settings.TargetPoint);
         settings = settings with
         {
-            SlopePercent = Math.Abs(EndpointSlopePercent(inside, endpoint)),
             BranchPipeTypeId = context.TargetPipeType.Id
         };
-        IReadOnlyList<DrainRoute> routes = DrainGeometry.BuildCase06Candidates(
+        IReadOnlyList<DrainRoute> routes = DrainGeometry.BuildCase05Candidates(
             inside,
             endpoint,
             context.SourceConnector.Origin,
@@ -129,7 +356,7 @@ internal static class DrainRoutingService
             context.MainDiameter);
         if (routes.Count == 0)
             throw new InvalidOperationException(
-                "No Case 06 endpoint elbow route fits. Pick near an open main end with enough outward length for the 45 degree connection.");
+                "No Case 05 endpoint elbow route fits. Pick near an open main end with enough outward length for the 45 degree connection.");
         return routes;
     }
 
@@ -140,6 +367,8 @@ internal static class DrainRoutingService
         DrainSettings settings)
     {
         Context context = Resolve(document, sourceId, targetId, settings);
+        settings = ValidateSelectedYBeforeStage1(
+            document, settings, context.TargetPipeType);
         var failures = new List<string>();
         IReadOnlyList<DrainRoute> routes = DrainGeometry.BuildCandidates(
             context.MainStart,
@@ -147,10 +376,14 @@ internal static class DrainRoutingService
             context.SourceConnector.Origin,
             settings,
             context.BranchDiameter,
-            context.MainDiameter);
+            context.MainDiameter,
+            settings.JunctionAngles);
         if (routes.Count == 0)
             throw new InvalidOperationException(
-                "No gravity-safe device-to-main route fits the selected drain and main.");
+                "No gravity-safe device-to-main route fits after trying every compatible " +
+                $"Y angle ({string.Join(", ", settings.JunctionAngles ?? [])}) and compact " +
+                "takeout from 0.35x to 4x branch DN. Check the drain-connection log for " +
+                "the source/main elevations and picked point.");
 
         foreach (DrainRoute route in routes)
         {
@@ -179,7 +412,7 @@ internal static class DrainRoutingService
                     document,
                     context,
                     result,
-                    failures);
+                    failures, settings);
             }
             catch (Exception exception)
             {
@@ -208,6 +441,8 @@ internal static class DrainRoutingService
         DrainSettings settings)
     {
         Context context = Resolve(document, sourceId, targetId, settings);
+        settings = ValidateSelectedYBeforeStage1(
+            document, settings, context.TargetPipeType);
         var failures = new List<string>();
         IReadOnlyList<DrainRoute> routes = DrainGeometry.BuildCase02Candidates(
             context.MainStart,
@@ -215,20 +450,27 @@ internal static class DrainRoutingService
             context.SourceConnector.Origin,
             settings,
             context.BranchDiameter,
-            context.MainDiameter);
+            context.MainDiameter,
+            settings.JunctionAngles);
         if (routes.Count == 0)
             throw new InvalidOperationException(
                 "No gravity-safe Case 02 route fits the selected drain and main.");
 
         foreach (DrainRoute route in routes)
         {
+            double nearMainLength = route.NearMainElbow is null
+                ? 0.0
+                : PlanDistance(route.NearMainElbow, route.WyePoint);
+            string candidateLabel =
+                $"compact {DrainGeometry.ToMm(route.CompactOffset):0.#} mm / " +
+                $"near-main {DrainGeometry.ToMm(nearMainLength):0.#} mm";
             using var attempt = new Transaction(
                 document,
                 "Case 02 create elbow-offset branch");
             attempt.Start();
             ConfigureFailureHandling(
                 attempt,
-                failure => failures.Add($"Case 02: {failure}"));
+                failure => failures.Add($"Case 02 {candidateLabel}: {failure}"));
             try
             {
                 DrainOperationResult stage1 = CreateSplitSlopeBranch(
@@ -237,18 +479,18 @@ internal static class DrainRoutingService
                     route);
                 if (attempt.Commit() != TransactionStatus.Committed)
                 {
-                    failures.Add("Case 02: Revit rolled back the branch candidate.");
+                    failures.Add($"Case 02 {candidateLabel}: Revit rolled back the branch candidate.");
                     continue;
                 }
                 return CompleteWithRoutedY(
                     document,
                     context,
                     stage1,
-                    failures);
+                    failures, settings);
             }
             catch (Exception exception)
             {
-                failures.Add($"Case 02: {exception.Message}");
+                failures.Add($"Case 02 {candidateLabel}: {exception.Message}");
                 if (attempt.GetStatus() == TransactionStatus.Started)
                     attempt.RollBack();
             }
@@ -273,11 +515,14 @@ internal static class DrainRoutingService
         DrainSettings settings)
     {
         Context context = Resolve(document, sourceId, targetId, settings);
+        settings = ValidateSelectedYBeforeStage1(
+            document, settings, context.TargetPipeType);
         var failures = new List<string>();
         IReadOnlyList<DrainRoute> routes = DrainGeometry.BuildCase03Candidates(
             context.MainStart,
             context.MainEnd,
             context.SourceConnector.Origin,
+            settings,
             context.BranchDiameter,
             context.MainDiameter);
         if (routes.Count == 0)
@@ -308,7 +553,7 @@ internal static class DrainRoutingService
                     document,
                     context,
                     stage1,
-                    failures);
+                    failures, settings);
             }
             catch (Exception exception)
             {
@@ -372,7 +617,10 @@ internal static class DrainRoutingService
                 DrainOperationResult result = CreateBranchOnlyCase04(
                     document,
                     context,
-                    route);
+                    route,
+                    DrainGeometry.Mm(settings.Case04MiddlePipeLengthMm),
+                    sourceId,
+                    targetId);
                 if (attempt.Commit() != TransactionStatus.Committed)
                 {
                     failures.Add("Case 04: Revit rolled back the endpoint connection.");
@@ -400,22 +648,25 @@ internal static class DrainRoutingService
                 : Environment.NewLine + Environment.NewLine + details));
     }
 
-    public static DrainOperationResult CreateCase05(
+    public static DrainOperationResult CreateCase06(
         Document document,
         ElementId sourceId,
         ElementId targetId,
         DrainSettings settings)
     {
         Context context = Resolve(document, sourceId, targetId, settings);
-        IReadOnlyList<DrainRoute> routes = BuildCase05PipeOnlyRoutes(
-            context,
-            settings);
+        settings = ValidateSelectedYBeforeStage1(
+            document,
+            settings,
+            context.TargetPipeType);
+        context = Resolve(document, sourceId, targetId, settings);
+        IReadOnlyList<DrainRoute> routes = [BuildCase06ReviewRoute(context, settings)];
         var failures = new List<string>();
         foreach (DrainRoute route in routes)
         {
             using var stage1Transaction = new Transaction(
                 document,
-                "Case 05 create gravity branch before routed Y");
+                "Case 06 create connected branch to main");
             stage1Transaction.Start();
             ConfigureFailureHandling(
                 stage1Transaction,
@@ -429,14 +680,15 @@ internal static class DrainRoutingService
                 if (stage1Transaction.Commit() != TransactionStatus.Committed)
                 {
                     failures.Add(
-                        $"Offset {DrainGeometry.ToMm(route.CompactOffset):0} mm: Revit rolled back the Case 05 branch.");
+                        $"Offset {DrainGeometry.ToMm(route.CompactOffset):0} mm: Revit rolled back the Case 06 connected branch.");
                     continue;
                 }
                 return CompleteWithRoutedY(
                     document,
                     context,
                     stage1,
-                    failures);
+                    failures,
+                    settings);
             }
             catch (Exception exception)
             {
@@ -448,7 +700,7 @@ internal static class DrainRoutingService
         }
 
         throw new InvalidOperationException(
-            "Revit could not create the Case 05 rolled branch and routed Y at the selected main point." +
+            "Revit could not create the Case 06 elbows and routed Y on the approved pipe layout." +
             Environment.NewLine + Environment.NewLine +
             string.Join(
                 Environment.NewLine,
@@ -457,7 +709,197 @@ internal static class DrainRoutingService
                     .TakeLast(8)));
     }
 
-    public static DrainOperationResult CreateCase06(
+    private static DrainOperationResult CreateCase06PipeLayout(
+        Document document,
+        Context context,
+        DrainRoute route)
+    {
+        XYZ aEnd = route.NearMainElbow
+            ?? throw new InvalidOperationException(
+                "Case 06 did not calculate the end of parallel pipe A.");
+        var ids = new List<ElementId>();
+        Pipe vertical = CreatePipe(
+            document,
+            context,
+            route.DrainOrigin,
+            route.StubEnd);
+        Pipe doubleElbowMiddle = CreatePipe(
+            document,
+            context,
+            route.StubEnd,
+            route.DiagonalEnd);
+        Pipe pipeA = CreatePipe(
+            document,
+            context,
+            route.DiagonalEnd,
+            aEnd);
+        Pipe pipeB = CreatePipe(
+            document,
+            context,
+            aEnd,
+            route.WyePoint);
+        ids.AddRange([
+            vertical.Id,
+            doubleElbowMiddle.Id,
+            pipeA.Id,
+            pipeB.Id]);
+        document.Regenerate();
+
+        return new DrainOperationResult(
+            true,
+            false,
+            "Case 06 pipe layout created to the picked main point. " +
+            "No elbows, main break, or Y fitting were created; inspect the route first.",
+            route,
+            ids);
+    }
+
+    private static DrainRoute BuildCase06ReviewRoute(
+        Context context,
+        DrainSettings settings)
+    {
+        XYZ source = context.SourceConnector.Origin;
+        double mainX = context.MainEnd.X - context.MainStart.X;
+        double mainY = context.MainEnd.Y - context.MainStart.Y;
+        double mainPlanLength = Math.Sqrt(mainX * mainX + mainY * mainY);
+        if (mainPlanLength <= 1e-9)
+            throw new InvalidOperationException(
+                "Case 06 requires a main pipe with a usable plan direction.");
+        double ux = mainX / mainPlanLength;
+        double uy = mainY / mainPlanLength;
+
+        XYZ pickedPoint = ResolveConnectionPointOnMain(
+            context.Target,
+            settings.TargetPoint
+            ?? throw new InvalidOperationException(
+                "Pick the Case 06 direction point on the main."));
+        double sourceAlong =
+            (source.X - context.MainStart.X) * ux +
+            (source.Y - context.MainStart.Y) * uy;
+        double pickedAlong =
+            (pickedPoint.X - context.MainStart.X) * ux +
+            (pickedPoint.Y - context.MainStart.Y) * uy;
+        double hand = Math.Sign(pickedAlong - sourceAlong);
+        if (Math.Abs(hand) < 0.5)
+        {
+            double roomTowardEnd = mainPlanLength - sourceAlong;
+            double roomTowardStart = sourceAlong;
+            hand = roomTowardEnd >= roomTowardStart ? 1.0 : -1.0;
+        }
+
+        double projectedX = context.MainStart.X + ux * sourceAlong;
+        double projectedY = context.MainStart.Y + uy * sourceAlong;
+        double lateralX = source.X - projectedX;
+        double lateralY = source.Y - projectedY;
+        double lateralDistance = Math.Sqrt(
+            lateralX * lateralX + lateralY * lateralY);
+        if (lateralDistance <= DrainGeometry.Mm(25))
+            throw new InvalidOperationException(
+                "Case 06 needs the device to be offset from the main in plan.");
+
+        double preferredCompactPlan = Math.Max(
+            DrainGeometry.Mm(200),
+            context.BranchDiameter * 2.0);
+        double minimumCompactPlan = Math.Max(
+            DrainGeometry.Mm(100),
+            context.BranchDiameter);
+        // Socket/cast-iron elbows can consume substantially more straight pipe
+        // than UPVC elbows. Prefer a longer A segment when the selected main
+        // has room, then shrink it only for genuinely short mains.
+        double preferredPipeAPlan = Math.Max(
+            DrainGeometry.Mm(600),
+            context.BranchDiameter * 6.0);
+        double minimumPipeAPlan = Math.Max(
+            DrainGeometry.Mm(75),
+            context.BranchDiameter);
+        // For a true 45-degree B in plan, its along-main travel equals its
+        // perpendicular travel to the main. This fixes the requested visual
+        // direction explicitly and leaves no mirrored candidate to select.
+        double endClearance = Math.Max(
+            DrainGeometry.Mm(150),
+            context.MainDiameter * 1.5);
+        double availableAlong = hand > 0.0
+            ? mainPlanLength - endClearance - sourceAlong
+            : sourceAlong - endClearance;
+        double requiredMinimumAlong =
+            lateralDistance + minimumCompactPlan + minimumPipeAPlan;
+        if (availableAlong < requiredMinimumAlong)
+        {
+            double oppositeHand = -hand;
+            double oppositeAvailable = oppositeHand > 0.0
+                ? mainPlanLength - endClearance - sourceAlong
+                : sourceAlong - endClearance;
+            if (oppositeAvailable >= requiredMinimumAlong)
+            {
+                hand = oppositeHand;
+                availableAlong = oppositeAvailable;
+            }
+        }
+        double compactPlan = Math.Min(
+            preferredCompactPlan,
+            availableAlong - lateralDistance - minimumPipeAPlan);
+        if (compactPlan < minimumCompactPlan)
+            throw new InvalidOperationException(
+                "Case 06 has insufficient main length for the two device-side 45-degree elbows.");
+        double pipeAPlan = Math.Min(
+            preferredPipeAPlan,
+            availableAlong - lateralDistance - compactPlan);
+        if (pipeAPlan < minimumPipeAPlan)
+            throw new InvalidOperationException(
+                "Case 06 needs more main length in the selected direction for the parallel pipe and the 45-degree pipe into the main.");
+        double mainAlong = sourceAlong + hand * (
+            compactPlan + pipeAPlan + lateralDistance);
+
+        double mainParameter = mainAlong / mainPlanLength;
+        XYZ mainPoint = new(
+            context.MainStart.X + ux * mainAlong,
+            context.MainStart.Y + uy * mainAlong,
+            context.MainStart.Z +
+            (context.MainEnd.Z - context.MainStart.Z) * mainParameter);
+        double slope = Math.Abs(settings.SlopePercent) / 100.0;
+        double pipeBPlan = lateralDistance * Math.Sqrt(2.0);
+        double aEndZ = mainPoint.Z + pipeBPlan * slope;
+        double diagonalEndZ = aEndZ + pipeAPlan * slope;
+        double verticalEndZ = diagonalEndZ + compactPlan;
+        double minimumVertical = Math.Max(
+            DrainGeometry.Mm(25),
+            context.BranchDiameter * 0.25);
+        if (source.Z - verticalEndZ < minimumVertical)
+            throw new InvalidOperationException(
+                "The device needs more vertical clearance for the Case 06 double-45 drop.");
+
+        XYZ verticalEnd = new(source.X, source.Y, verticalEndZ);
+        XYZ diagonalEnd = new(
+            source.X + ux * hand * compactPlan,
+            source.Y + uy * hand * compactPlan,
+            diagonalEndZ);
+        XYZ aEnd = new(
+            diagonalEnd.X + ux * hand * pipeAPlan,
+            diagonalEnd.Y + uy * hand * pipeAPlan,
+            aEndZ);
+        double cross = mainX * lateralY - mainY * lateralX;
+        double junctionAngle = settings.JunctionAngles?
+            .FirstOrDefault(angle => angle >= 20.0 && angle <= 75.0) ?? 45.0;
+
+        return new DrainRoute(
+            source,
+            verticalEnd,
+            diagonalEnd,
+            mainPoint,
+            context.MainStart,
+            context.MainEnd,
+            compactPlan,
+            pipeAPlan + pipeBPlan,
+            mainParameter,
+            45.0,
+            junctionAngle,
+            Math.Abs(settings.SlopePercent),
+            cross >= 0 ? DrainSide.Left : DrainSide.Right,
+            aEnd,
+            6);
+    }
+
+    public static DrainOperationResult CreateCase05(
         Document document,
         ElementId sourceId,
         ElementId targetId,
@@ -470,10 +912,9 @@ internal static class DrainRoutingService
             settings.TargetPoint);
         settings = settings with
         {
-            SlopePercent = Math.Abs(EndpointSlopePercent(inside, endpoint)),
             BranchPipeTypeId = context.TargetPipeType.Id
         };
-        IReadOnlyList<DrainRoute> routes = DrainGeometry.BuildCase06Candidates(
+        IReadOnlyList<DrainRoute> routes = DrainGeometry.BuildCase05Candidates(
             inside,
             endpoint,
             context.SourceConnector.Origin,
@@ -482,39 +923,40 @@ internal static class DrainRoutingService
             context.MainDiameter);
         if (routes.Count == 0)
             throw new InvalidOperationException(
-                "No gravity-safe Case 06 route fits the selected drain and open main end.");
+                "No gravity-safe Case 05 route fits the selected drain and open main end.");
 
         var failures = new List<string>();
         foreach (DrainRoute route in routes)
         {
             using var attempt = new Transaction(
                 document,
-                "Case 06 connect endpoint with 45 degree elbow");
+                "Case 05 connect endpoint with 45 degree elbow");
             attempt.Start();
             ConfigureFailureHandling(
                 attempt,
-                failure => failures.Add($"Case 06: {failure}"));
+                failure => failures.Add($"Case 05: {failure}"));
             try
             {
-                Pipe target = document.GetElement(context.Target.Id) as Pipe
+                Pipe target = document.GetElement(targetId) as Pipe
                     ?? throw new InvalidOperationException(
-                        "The selected Case 06 main is no longer available.");
-                DrainOperationResult result = CreateCase06EndpointElbow(
+                        "The selected Case 05 main is no longer available.");
+                DrainOperationResult result = CreateCase05EndpointElbow(
                     document,
                     context,
                     route,
                     target,
-                    endpoint);
+                    endpoint,
+                    sourceId);
                 if (attempt.Commit() != TransactionStatus.Committed)
                 {
-                    failures.Add("Case 06: Revit rolled back the endpoint elbow candidate.");
+                    failures.Add("Case 05: Revit rolled back the endpoint elbow candidate.");
                     continue;
                 }
                 return result;
             }
             catch (Exception exception)
             {
-                failures.Add($"Case 06: {exception.Message}");
+                failures.Add($"Case 05: {exception.Message}");
                 if (attempt.GetStatus() == TransactionStatus.Started)
                     attempt.RollBack();
             }
@@ -526,84 +968,166 @@ internal static class DrainRoutingService
                 .Distinct()
                 .TakeLast(8));
         throw new InvalidOperationException(
-            "Revit could not create the Case 06 endpoint 45 degree elbow connection." +
+            "Revit could not create the Case 05 endpoint 45 degree elbow connection." +
             (details.Length == 0
                 ? string.Empty
                 : Environment.NewLine + Environment.NewLine + details));
     }
 
-    private static DrainOperationResult CreateCase06EndpointElbow(
+    private static DrainOperationResult CreateCase05EndpointElbow(
         Document document,
         Context context,
         DrainRoute route,
         Pipe target,
-        XYZ oldEndpoint)
+        XYZ oldEndpoint,
+        ElementId sourceId)
     {
+        ValidateRouteFallsToMain(route, "Case 05 route");
         var ids = new List<ElementId>();
-        Element source = document.GetElement(context.Source.Id)
-            ?? throw new InvalidOperationException(
-                "The Case 06 drain is no longer available.");
+        string stage = "prepare the picked main endpoint";
 
-        // Stop the existing main exactly at the calculated Case-01-style
-        // junction point. There is no continuation beyond this point and no Y.
-        ExtendOpenMainEndpoint(target, oldEndpoint, route.WyePoint);
-        document.Regenerate();
+        try
+        {
+            // A picked interior point becomes a new open end: retain the longer
+            // main side and remove the short surplus tail. If the selected point
+            // was already an open end this is a no-op.
+            target = PreparePickedMainEndpoint(
+                document,
+                target,
+                route.MainStart,
+                oldEndpoint);
 
-        ApproachPipes approach = CreateApproachPipes(
-            document,
-            context,
-            route,
-            ids);
-        Pipe branch = CreatePipe(
-            document,
-            context,
-            route.DiagonalEnd,
-            route.WyePoint);
-        ids.Add(branch.Id);
-        document.Regenerate();
+            // Stop the retained main exactly at the calculated Case-01-style
+            // junction point. There is no continuation beyond this point and no Y.
+            stage = "extend the retained main to the elbow point";
+            target = ExtendOpenMainEndpoint(
+                document,
+                target,
+                oldEndpoint,
+                route.WyePoint);
 
-        Connector sourceConnector = DrainSelection.ChooseSourceConnector(source);
-        FamilyInstance? sourceTransition = ConnectCase04Source(
-            document,
-            sourceConnector,
-            approach.Stub,
-            route);
-        FamilyInstance source45A = CreateCase04Elbow(
-            document,
-            approach.Stub,
-            approach.Diagonal,
-            route.StubEnd,
-            "upper device-side 45 degree elbow");
-        FamilyInstance source45B = CreateCase04Elbow(
-            document,
-            approach.Diagonal,
-            branch,
-            route.DiagonalEnd,
-            "lower device-side 45 degree elbow");
-        FamilyInstance main45 = CreateCase04Elbow(
-            document,
-            branch,
-            target,
-            route.WyePoint,
-            "main endpoint 45 degree elbow");
-        ids.AddRange([source45A.Id, source45B.Id, main45.Id]);
-        if (sourceTransition is not null)
-            ids.Add(sourceTransition.Id);
-        document.Regenerate();
+            stage = "create the device-side pipes";
+            ApproachPipes approach = CreateApproachPipes(
+                document,
+                context,
+                route,
+                ids);
+            Pipe branch = CreatePipe(
+                document,
+                context,
+                route.DiagonalEnd,
+                route.WyePoint);
+            ElementId stubId = approach.Stub.Id;
+            ElementId diagonalId = approach.Diagonal.Id;
+            ElementId branchId = branch.Id;
+            ElementId targetPipeId = target.Id;
+            ids.Add(branch.Id);
+            document.Regenerate();
 
-        return new DrainOperationResult(
-            true,
-            false,
-            "Case 06 created: Case-01-style gravity branch connected directly " +
-            "to the open main endpoint with a routing-preference 45 degree elbow. " +
-            "Main DN, Pipe Type, and slope were retained; no Y was created.",
-            route,
-            ids);
+            stage = "connect the device reducer or leave its DN gap";
+            Element source = document.GetElement(sourceId)
+                ?? throw new InvalidOperationException(
+                    "The Case 05 drain is no longer available.");
+            Connector sourceConnector = DrainSelection.ChooseSourceConnector(source);
+            SourceConnection sourceConnection = ConnectCase04Source(
+                document,
+                context,
+                sourceConnector,
+                approach.Stub,
+                route);
+            // A failed reducer probe rolls back a SubTransaction. Revit 2025
+            // can invalidate every managed Pipe wrapper that participated in
+            // that probe even though the underlying elements still exist.
+            // Always reacquire the pipes before creating the elbows.
+            approach = new ApproachPipes(
+                RequirePipe(document, stubId, "Case 05 device stub"),
+                RequirePipe(document, diagonalId, "Case 05 device diagonal"));
+            branch = RequirePipe(document, branchId, "Case 05 branch");
+            stage = "create the upper device-side 45 degree elbow";
+            FamilyInstance source45A = document.Create.NewElbowFitting(
+                DrainSelection.ConnectorNear(
+                    approach.Stub, route.StubEnd, true),
+                DrainSelection.ConnectorNear(
+                    approach.Diagonal, route.StubEnd, true));
+            approach = new ApproachPipes(
+                RequirePipe(document, stubId, "Case 05 device stub"),
+                RequirePipe(document, diagonalId, "Case 05 device diagonal"));
+            branch = RequirePipe(document, branchId, "Case 05 sloped branch");
+            target = RequirePipe(document, targetPipeId, "Case 05 retained main");
+            stage = "create the lower device-side 45 degree elbow";
+            FamilyInstance source45B = document.Create.NewElbowFitting(
+                DrainSelection.ConnectorNear(
+                    approach.Diagonal, route.DiagonalEnd, true),
+                DrainSelection.ConnectorNear(
+                    branch, route.DiagonalEnd, true));
+            approach = new ApproachPipes(
+                RequirePipe(document, stubId, "Case 05 device stub"),
+                RequirePipe(document, diagonalId, "Case 05 device diagonal"));
+            branch = RequirePipe(document, branchId, "Case 05 sloped branch");
+            target = RequirePipe(document, targetPipeId, "Case 05 retained main");
+            stage = "create the main endpoint 45 degree elbow";
+            FamilyInstance main45 = CreateCase04Elbow(
+                document,
+                branch,
+                target,
+                route.WyePoint,
+                "main endpoint 45 degree elbow",
+                preservePipeAxes: true);
+            ids.AddRange([source45A.Id, source45B.Id, main45.Id]);
+            AddSourceConnectionIds(ids, sourceConnection);
+            document.Regenerate();
+            branch = RequirePipe(document, branchId, "Case 05 sloped branch");
+            approach = new ApproachPipes(
+                RequirePipe(document, stubId, "Case 05 device stub"),
+                RequirePipe(document, diagonalId, "Case 05 device diagonal"));
+            ValidateVerticalDeviceStub(approach.Stub, route.DrainOrigin);
+            ValidateRequestedSlope(
+                branch,
+                route.SlopePercent,
+                "Case 05 branch after elbow insertion",
+                tolerancePercentagePoints: 0.01);
+            ValidatePipeFallsTowardMain(
+                approach.Stub, route.DrainOrigin, route.StubEnd,
+                "Case 05 device drop");
+            ValidatePipeFallsTowardMain(
+                approach.Diagonal, route.StubEnd, route.DiagonalEnd,
+                "Case 05 device-side diagonal");
+            ValidatePipeFallsTowardMain(
+                branch, route.DiagonalEnd, route.WyePoint,
+                "Case 05 branch into main");
+            ValidatePipeFallsAwayFromConnection(
+                target,
+                route.WyePoint,
+                "Case 05 retained main after the endpoint elbow");
+
+            string resultMessage = sourceConnection.HasOpenBreak
+                ? "Case 05 created: the branch and main endpoint elbow were completed, but the " +
+                  "device-to-main DN change is intentionally left open. " +
+                  sourceConnection.Warning
+                : "Case 05 created: Case-01-style gravity branch connected directly " +
+                  "to the open main endpoint with a routing-preference 45 degree elbow. " +
+                  "Main DN, Pipe Type, and slope were retained; no Y was created.";
+
+            return new DrainOperationResult(
+                true,
+                false,
+                resultMessage,
+                route,
+                ids);
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException(
+                $"Case 05 failed while trying to {stage}: {exception.Message}",
+                exception);
+        }
     }
 
-    private static IReadOnlyList<DrainRoute> BuildCase05PipeOnlyRoutes(
+    private static IReadOnlyList<DrainRoute> BuildCase06PipeOnlyRoutes(
         Context context,
-        DrainSettings settings)
+        DrainSettings settings,
+        double elbowAngleDegrees,
+        bool useExactElbowGeometry = true)
     {
         XYZ source = context.SourceConnector.Origin;
         double mainX = context.MainEnd.X - context.MainStart.X;
@@ -611,15 +1135,15 @@ internal static class DrainRoutingService
         double mainPlanLength = Math.Sqrt(mainX * mainX + mainY * mainY);
         if (mainPlanLength <= 1e-9)
             throw new InvalidOperationException(
-                "Case 05 requires a main pipe with a usable plan direction.");
+                "Case 06 requires a main pipe with a usable plan direction.");
 
         double ux = mainX / mainPlanLength;
         double uy = mainY / mainPlanLength;
-        XYZ mainPoint = ResolveConnectionPointOnMain(
+        XYZ pickedMainPoint = ResolveConnectionPointOnMain(
             context.Target,
             settings.TargetPoint
             ?? throw new InvalidOperationException(
-                "Pick the exact connection point on the main pipe for Case 05."));
+                "Pick the exact connection point on the main pipe for Case 06."));
         double sourceAlong =
             (source.X - context.MainStart.X) * ux +
             (source.Y - context.MainStart.Y) * uy;
@@ -630,13 +1154,62 @@ internal static class DrainRoutingService
         double lateralDistance = Math.Sqrt(
             lateralX * lateralX + lateralY * lateralY);
 
+        // During the pipe-layout review, the click selects the along-main
+        // direction rather than forcing an impossible nearby break point. A
+        // 45-degree B needs approximately the lateral device-to-main distance
+        // along the main, plus a visible positive length for parallel pipe A.
+        // If the click is nearer than that, move the proposed break farther in
+        // the clicked direction so A and B both continue the same way instead
+        // of A overshooting and B doubling back.
+        double pickedAlong =
+            (pickedMainPoint.X - context.MainStart.X) * ux +
+            (pickedMainPoint.Y - context.MainStart.Y) * uy;
+        XYZ mainPoint = pickedMainPoint;
+        if (!useExactElbowGeometry)
+        {
+            double direction = Math.Sign(pickedAlong - sourceAlong);
+            if (Math.Abs(direction) < 0.5)
+                direction = 1.0;
+            double reviewMinimumAPlan = Math.Max(
+                DrainGeometry.Mm(300),
+                context.BranchDiameter * 3.0);
+            double requiredAlong = lateralDistance + reviewMinimumAPlan;
+            double proposedAlong = sourceAlong + direction * Math.Max(
+                Math.Abs(pickedAlong - sourceAlong),
+                requiredAlong);
+            double mainEndClearance = Math.Max(
+                DrainGeometry.Mm(100),
+                context.MainDiameter);
+            if (proposedAlong <= mainEndClearance ||
+                proposedAlong >= mainPlanLength - mainEndClearance)
+                throw new InvalidOperationException(
+                    "Case 06 needs more main length in the clicked direction for parallel pipe A and the 45-degree diagonal B.");
+            double proposedParameter = proposedAlong / mainPlanLength;
+            mainPoint = new XYZ(
+                context.MainStart.X + ux * proposedAlong,
+                context.MainStart.Y + uy * proposedAlong,
+                context.MainStart.Z +
+                (context.MainEnd.Z - context.MainStart.Z) * proposedParameter);
+        }
+
         double sourceSlope = settings.SlopePercent / 100.0;
         double planFactor = 1.0 / Math.Sqrt(1.0 + sourceSlope * sourceSlope);
-        double fortyFive = Math.PI / 4.0;
+        double junctionAngleDegrees = settings.JunctionAngles?
+            .FirstOrDefault(angle => angle >= 20.0 && angle <= 75.0) ?? 45.0;
+        // Pipe A and pipe B meet through an elbow. Their geometry must follow
+        // the elbow angle, independently from the selected Y's branch angle.
+        // For the zero-roll layout both pipes have the entered gravity slope,
+        // so a 45 degree plan turn is slightly more than 45 degrees in 3D.
+        // Compensate the plan angle so Revit sees an exact 45 degree connector
+        // angle and can resolve strict socket-elbow families.
+        if (elbowAngleDegrees <= 5.0 || elbowAngleDegrees >= 85.0)
+            throw new InvalidOperationException(
+                $"Case 06 elbow connector angle {elbowAngleDegrees:0.###} degrees is not usable.");
+        double elbowAngle = elbowAngleDegrees * Math.PI / 180.0;
         double rollDegrees = settings.YRollAngleDegrees;
         if (rollDegrees < 0.0 || rollDegrees >= 89.9)
             throw new InvalidOperationException(
-                "Case 05 Y Up-Roll must be from 0 degrees up to, but not including, 89.9 degrees.");
+                "Case 06 Y Up-Roll must be from 0 degrees up to, but not including, 89.9 degrees.");
         double preferredOffset = Math.Max(
             DrainGeometry.Mm(100),
             context.BranchDiameter);
@@ -652,6 +1225,9 @@ internal static class DrainRoutingService
         double selectedAlong =
             (mainPoint.X - context.MainStart.X) * ux +
             (mainPoint.Y - context.MainStart.Y) * uy;
+        double preferredMainHand = Math.Sign(selectedAlong - sourceAlong);
+        if (Math.Abs(preferredMainHand) < 0.5)
+            preferredMainHand = 1.0;
         double parameter = Math.Max(0.0, Math.Min(1.0, selectedAlong / mainPlanLength));
         double cross = mainX * lateralY - mainY * lateralX;
 
@@ -664,49 +1240,93 @@ internal static class DrainRoutingService
                 aPlanX * planFactor,
                 aPlanY * planFactor,
                 -sourceSlope * planFactor);
-            XYZ verticalRoute = -XYZ.BasisZ;
-            // Keep the compact double-45 pair in the same vertical plane as
-            // pipe A. The former exact-cone solution added a normal component
-            // so both connector angles were mathematically 45 degrees, but
-            // that rolled the pair sideways and produced the visible hook in
-            // TOP view. The coplanar bisector keeps the source, offset and A
-            // centerlines on one plan axis; Revit resolves the small slope
-            // allowance through the elbow family selected by the pipe type.
-            XYZ approachAxis = (verticalRoute + routeA).Normalize();
+            // Solve the short pipe between the two source elbows from the real
+            // connector angle. A nominal 45-degree cast-iron elbow in this
+            // project has 47-degree connector axes, so a planar 45-degree
+            // bisector is rejected by Revit. The lateral component below is
+            // the smallest roll that lets the same real elbow connect both the
+            // vertical drop and sloped pipe A while A remains parallel to main.
+            double elbowCosine = Math.Cos(elbowAngle);
+            double approachHorizontal = Math.Sin(elbowAngle);
+            double routeAPlanMagnitude = Math.Sqrt(
+                routeA.X * routeA.X + routeA.Y * routeA.Y);
+            if (routeAPlanMagnitude <= 1e-9)
+                continue;
+            double routeAUnitX = routeA.X / routeAPlanMagnitude;
+            double routeAUnitY = routeA.Y / routeAPlanMagnitude;
+            double approachAlongA =
+                (elbowCosine + elbowCosine * routeA.Z) /
+                routeAPlanMagnitude;
+            double approachLateralSquared =
+                approachHorizontal * approachHorizontal -
+                approachAlongA * approachAlongA;
+            if (approachLateralSquared < -1e-9)
+                continue;
+            double approachLateral = Math.Sqrt(Math.Max(
+                0.0,
+                approachLateralSquared));
 
-            foreach (double offsetMultiplier in new[] { 1.0, 1.25, 1.50, 1.75, 2.0 })
+            IEnumerable<double> approachHands = useExactElbowGeometry
+                ? new[] { 1.0, -1.0 }
+                : new[] { 1.0 };
+            foreach (double approachHand in approachHands)
             {
-                double compactDrop = preferredOffset * offsetMultiplier;
-                double approachLength = compactDrop / -approachAxis.Z;
-                double diagonalPlanX = source.X + approachAxis.X * approachLength;
-                double diagonalPlanY = source.Y + approachAxis.Y * approachLength;
+                double normalX = -routeAUnitY * approachHand;
+                double normalY = routeAUnitX * approachHand;
+                XYZ approachAxis = useExactElbowGeometry
+                    ? new XYZ(
+                        routeAUnitX * approachAlongA + normalX * approachLateral,
+                        routeAUnitY * approachAlongA + normalY * approachLateral,
+                        -elbowCosine).Normalize()
+                    // Geometry-review route: keep the double-elbow middle pipe
+                    // in A's vertical plane so TOP view clearly shows the
+                    // requested vertical drop -> parallel A -> 45-degree B.
+                    : (-XYZ.BasisZ + routeA).Normalize();
 
-                foreach (double branchHand in new[] { 1.0, -1.0 })
+                foreach (double offsetMultiplier in new[] { 1.0, 1.25, 1.50, 1.75, 2.0 })
                 {
-                    XYZ routeB;
-                    if (rollDegrees <= 1e-8)
+                    double compactDrop = preferredOffset * offsetMultiplier;
+                    double approachLength = compactDrop / -approachAxis.Z;
+                    double diagonalPlanX = source.X + approachAxis.X * approachLength;
+                    double diagonalPlanY = source.Y + approachAxis.Y * approachLength;
+
+                    foreach (double branchHand in new[] { 1.0, -1.0 })
                     {
+                        XYZ routeB;
+                        if (rollDegrees <= 1e-8)
+                        {
                         // At zero roll, A and B use the same entered gravity
-                        // slope. Their TOP-view direction changes by 45 degrees.
+                        // slope. B leaves the A/B elbow back toward the main,
+                        // so its along-main component is opposite route A. The
+                        // old +A component made the two rays leaving the elbow
+                        // about 135 degrees apart and Revit rejected the fitting.
                         double perpendicularX = -aPlanY * branchHand;
                         double perpendicularY = aPlanX * branchHand;
+                        double slopeSquared = sourceSlope * sourceSlope;
+                        double compensatedPlanCosine =
+                            Math.Cos(elbowAngle) * (1.0 + slopeSquared) +
+                            slopeSquared;
+                        if (compensatedPlanCosine < -1.0 ||
+                            compensatedPlanCosine > 1.0)
+                            continue;
+                        double compensatedPlanAngle = Math.Acos(
+                            Math.Max(-1.0, Math.Min(1.0, compensatedPlanCosine)));
                         double bPlanX =
-                            aPlanX * Math.Cos(fortyFive) +
-                            perpendicularX * Math.Sin(fortyFive);
+                            -aPlanX * Math.Cos(compensatedPlanAngle) +
+                            perpendicularX * Math.Sin(compensatedPlanAngle);
                         double bPlanY =
-                            aPlanY * Math.Cos(fortyFive) +
-                            perpendicularY * Math.Sin(fortyFive);
-                        routeB = new XYZ(
-                            bPlanX * planFactor,
-                            bPlanY * planFactor,
-                            -sourceSlope * planFactor).Normalize();
-                    }
-                    else
-                    {
-                        // For a user roll, B is no longer slope-controlled.
-                        // It follows the 45-degree Y branch connector rolled
-                        // upward around the A/main axis. This automatically
-                        // lifts the complete upstream elbow/A group.
+                            -aPlanY * Math.Cos(compensatedPlanAngle) +
+                            perpendicularY * Math.Sin(compensatedPlanAngle);
+                            routeB = new XYZ(
+                                bPlanX * planFactor,
+                                bPlanY * planFactor,
+                                -sourceSlope * planFactor).Normalize();
+                        }
+                        else
+                        {
+                        // For a user roll, B is no longer slope-controlled. Its
+                        // base direction is back toward the main (-A), then the
+                        // selected Y branch is rolled around the main axis.
                         XYZ verticalPerpendicular =
                             XYZ.BasisZ - routeA * XYZ.BasisZ.DotProduct(routeA);
                         if (verticalPerpendicular.GetLength() <= 1e-9)
@@ -719,10 +1339,10 @@ internal static class DrainRoutingService
                             -verticalPerpendicular * Math.Sin(roll) +
                             lateralPerpendicular *
                             (branchHand * Math.Cos(roll));
-                        routeB = (
-                            routeA * Math.Cos(fortyFive) +
-                            rolledDown * Math.Sin(fortyFive)).Normalize();
-                    }
+                            routeB = (
+                                -routeA * Math.Cos(elbowAngle) +
+                                rolledDown * Math.Sin(elbowAngle)).Normalize();
+                        }
 
                     double bPlanMagnitude = Math.Sqrt(
                         routeB.X * routeB.X + routeB.Y * routeB.Y);
@@ -771,42 +1391,94 @@ internal static class DrainRoutingService
                         DrainGeometry.Mm(1))
                         continue;
 
-                    routes.Add(new DrainRoute(
-                        source,
-                        verticalEnd,
-                        diagonalEnd,
-                        mainPoint,
-                        context.MainStart,
-                        context.MainEnd,
-                        compactDrop,
-                        pipeAPlanLength + pipeBPlanLength,
-                        parameter,
-                        0.0,
-                        45.0,
-                        settings.SlopePercent,
-                        cross >= 0 ? DrainSide.Left : DrainSide.Right,
-                        pipeAEnd,
-                        5));
+                        routes.Add(new DrainRoute(
+                            source,
+                            verticalEnd,
+                            diagonalEnd,
+                            mainPoint,
+                            context.MainStart,
+                            context.MainEnd,
+                            compactDrop,
+                            pipeAPlanLength + pipeBPlanLength,
+                            parameter,
+                            elbowAngleDegrees,
+                            junctionAngleDegrees,
+                            settings.SlopePercent,
+                            cross >= 0 ? DrainSide.Left : DrainSide.Right,
+                            pipeAEnd,
+                            6));
+                    }
                 }
             }
         }
         if (routes.Count == 0)
+        {
+            double availableDrop = source.Z - mainPoint.Z;
+            double usableRollDrop = Math.Max(
+                0.0,
+                availableDrop - preferredOffset - minimumVerticalLength);
+            double maximumRoll = lateralDistance <= 1e-9
+                ? 89.8
+                : Math.Atan(usableRollDrop / lateralDistance) * 180.0 / Math.PI;
             throw new InvalidOperationException(
                 rollDegrees <= 1e-8
-                    ? "The selected point cannot fit Case 05 with A and B using the entered slope. Pick another point farther along the main."
-                    : $"The selected point cannot fit Case 05 with Y Up-Roll {rollDegrees:0.###} degrees. Pick another point or reduce the roll angle.");
+                    ? "The selected point cannot fit Case 06 after trying A in both main directions and B toward every Y side. Check the device elevation and fitting takeout."
+                    : $"The selected point cannot fit Case 06 with Y Up-Roll {rollDegrees:0.###} degrees. " +
+                      $"The available geometry supports at most about {maximumRoll:0.#} degrees " +
+                      $"(available drop {DrainGeometry.ToMm(availableDrop):0} mm, lateral offset {DrainGeometry.ToMm(lateralDistance):0} mm). " +
+                      "Reduce Y Up-Roll or pick a point/main with more vertical clearance.");
+        }
         // In TOP view A is the segment parallel to the main and B is the
         // diagonal into the picked point. Prefer the longest feasible A (and
         // therefore the shortest B). Sorting by the shortest vertical stub
         // previously selected the opposite visual result: tiny A, very long B.
         return routes
-            .OrderByDescending(route => PlanDistance(
+            // Pipe A must leave the device in the along-main direction toward
+            // the picked break point. The previous longest-A preference could
+            // select the opposite hand, visibly sending A the wrong way before
+            // B doubled back to the main.
+            .OrderBy(route =>
+            {
+                XYZ a = (route.NearMainElbow
+                    ?? throw new InvalidOperationException("Case 06 route has no A/B point.")) -
+                    route.DiagonalEnd;
+                double alongMain = a.X * ux + a.Y * uy;
+                return alongMain * preferredMainHand >= 0.0 ? 0 : 1;
+            })
+            // After A has taken the correct along-main hand, choose the 45
+            // diagonal B that continues toward the picked point. The mirrored
+            // candidate lets A overshoot the break and makes B double back in
+            // the opposite direction, which is the reversed layout reported
+            // by the user.
+            .ThenBy(route =>
+            {
+                XYZ b = route.WyePoint - (route.NearMainElbow
+                    ?? throw new InvalidOperationException("Case 06 route has no A/B point."));
+                double alongMain = b.X * ux + b.Y * uy;
+                return alongMain * preferredMainHand >= 0.0 ? 0 : 1;
+            })
+            // The elbow and Y can have different real connector angles even
+            // when both families are sold as nominal 45-degree fittings. Try
+            // the main-hand candidate whose B axis best matches the measured
+            // Y branch axis before considering visual length preferences.
+            .ThenBy(route =>
+            {
+                XYZ b = route.WyePoint - (route.NearMainElbow
+                    ?? throw new InvalidOperationException("Case 06 route has no A/B point."));
+                XYZ main = route.MainEnd - route.MainStart;
+                double cosine = Math.Abs(
+                    b.Normalize().DotProduct(main.Normalize()));
+                cosine = Math.Max(-1.0, Math.Min(1.0, cosine));
+                double angle = Math.Acos(cosine) * 180.0 / Math.PI;
+                return Math.Abs(angle - route.FittingAngleDegrees);
+            })
+            .ThenByDescending(route => PlanDistance(
                 route.DiagonalEnd,
                 route.NearMainElbow
-                ?? throw new InvalidOperationException("Case 05 route has no A/B point.")))
+                ?? throw new InvalidOperationException("Case 06 route has no A/B point.")))
             .ThenBy(route => PlanDistance(
                 route.NearMainElbow
-                ?? throw new InvalidOperationException("Case 05 route has no A/B point."),
+                ?? throw new InvalidOperationException("Case 06 route has no A/B point."),
                 route.WyePoint))
             .ThenBy(route => route.CompactOffset)
             .Take(24)
@@ -850,7 +1522,7 @@ internal static class DrainRoutingService
         return part switch
         {
             FamilySymbol symbol => $"{symbol.FamilyName}: {symbol.Name}",
-            null => $"missing part {rule.MEPPartId.Value}",
+            null => $"missing part {rule.MEPPartId.CompatValue()}",
             _ => part.Name
         };
     }
@@ -860,6 +1532,7 @@ internal static class DrainRoutingService
         Context context,
         DrainRoute route)
     {
+        ValidateRouteFallsToMain(route, $"Case {route.CaseNumber:00} route");
         var ids = new List<ElementId>();
         Pipe target = document.GetElement(context.Target.Id) as Pipe
             ?? throw new InvalidOperationException("The target main is no longer available.");
@@ -881,11 +1554,12 @@ internal static class DrainRoutingService
         document.Regenerate();
 
         Connector sourceConnector = DrainSelection.ChooseSourceConnector(source);
-        FamilyInstance? sourceTransition = null;
-        if (route.CaseNumber == 6)
+        SourceConnection? sourceConnection = null;
+        if (route.CaseNumber == 5)
         {
-            sourceTransition = ConnectCase04Source(
+            sourceConnection = ConnectCase04Source(
                 document,
+                context,
                 sourceConnector,
                 approach.Stub,
                 route);
@@ -902,9 +1576,19 @@ internal static class DrainRoutingService
             DrainSelection.ConnectorNear(approach.Diagonal, route.DiagonalEnd, true),
             DrainSelection.ConnectorNear(branch, route.DiagonalEnd, true));
         ids.Add(elbow2.Id);
-        if (sourceTransition is not null)
-            ids.Add(sourceTransition.Id);
+        if (sourceConnection is not null)
+            AddSourceConnectionIds(ids, sourceConnection);
         document.Regenerate();
+        ValidateRequestedSlope(branch, route.SlopePercent, "Case 01 branch");
+        ValidatePipeFallsTowardMain(
+            approach.Stub, route.DrainOrigin, route.StubEnd,
+            $"Case {route.CaseNumber:00} device drop");
+        ValidatePipeFallsTowardMain(
+            approach.Diagonal, route.StubEnd, route.DiagonalEnd,
+            $"Case {route.CaseNumber:00} device-side diagonal");
+        ValidatePipeFallsTowardMain(
+            branch, route.DiagonalEnd, route.WyePoint,
+            $"Case {route.CaseNumber:00} branch");
 
         return new DrainOperationResult(
             true,
@@ -921,6 +1605,7 @@ internal static class DrainRoutingService
         Context context,
         DrainRoute route)
     {
+        ValidateRouteFallsToMain(route, $"Case {route.CaseNumber:00} route");
         XYZ nearMainElbow = route.NearMainElbow
             ?? throw new InvalidOperationException(
                 "Case 02 did not calculate its near-main elbow point.");
@@ -949,19 +1634,19 @@ internal static class DrainRoutingService
         // Place fittings before locking the source end to the device. Revit may
         // trim pipe endpoints while resolving elbow takeout; anchoring the stub
         // to the fixture first can force a pipe to reverse and invalidate it.
-        FamilyInstance nearMain45 = CreateCase05Elbow(
+        FamilyInstance nearMain45 = CreateCase06Elbow(
             document,
             straightBranch,
             yLeg,
             nearMainElbow,
             "A/B 45 degree elbow");
-        FamilyInstance sourceElbow2 = CreateCase05Elbow(
+        FamilyInstance sourceElbow2 = CreateCase06Elbow(
             document,
             approach.Diagonal,
             straightBranch,
             route.DiagonalEnd,
             "lower device-side 45 degree elbow");
-        FamilyInstance sourceElbow1 = CreateCase05Elbow(
+        FamilyInstance sourceElbow1 = CreateCase06Elbow(
             document,
             approach.Stub,
             approach.Diagonal,
@@ -972,9 +1657,20 @@ internal static class DrainRoutingService
         ids.AddRange([sourceElbow1.Id, sourceElbow2.Id, nearMain45.Id]);
         document.Regenerate();
 
-        if (route.CaseNumber == 5)
+        if (route.CaseNumber == 2)
         {
-            ValidateCase05PipeAxes(
+            ValidateRequestedSlope(
+                straightBranch,
+                route.SlopePercent,
+                "Case 02 straight branch");
+            ValidateRequestedSlope(
+                yLeg,
+                route.SlopePercent,
+                "Case 02 Y leg");
+        }
+        else if (route.CaseNumber == 6)
+        {
+            ValidateCase06PipeAxes(
                 approach.Stub,
                 approach.Diagonal,
                 straightBranch,
@@ -983,6 +1679,19 @@ internal static class DrainRoutingService
                     route.SlopePercent,
                     context.BranchPipeType.Id));
         }
+
+        ValidatePipeFallsTowardMain(
+            approach.Stub, route.DrainOrigin, route.StubEnd,
+            $"Case {route.CaseNumber:00} device drop");
+        ValidatePipeFallsTowardMain(
+            approach.Diagonal, route.StubEnd, route.DiagonalEnd,
+            $"Case {route.CaseNumber:00} device-side diagonal");
+        ValidatePipeFallsTowardMain(
+            straightBranch, route.DiagonalEnd, nearMainElbow,
+            $"Case {route.CaseNumber:00} pipe A");
+        ValidatePipeFallsTowardMain(
+            yLeg, nearMainElbow, route.WyePoint,
+            $"Case {route.CaseNumber:00} pipe B into main");
 
         return new DrainOperationResult(
             true,
@@ -993,30 +1702,336 @@ internal static class DrainRoutingService
             ids);
     }
 
-    private static FamilyInstance CreateCase05Elbow(
+    private static FamilyInstance CreateCase06Elbow(
         Document document,
         Pipe first,
         Pipe second,
         XYZ point,
         string label)
+        => CreateElbowWithRoutingFallback(
+            document,
+            first,
+            second,
+            point,
+            $"Case 06 {label}",
+            preservePipeAxes: true);
+
+    private static FamilyInstance CreateElbowWithRoutingFallback(
+        Document document,
+        Pipe first,
+        Pipe second,
+        XYZ point,
+        string operationLabel,
+        bool preservePipeAxes = false)
     {
-        try
+        ElementId firstId = first.Id;
+        ElementId secondId = second.Id;
+        XYZ firstAxisBefore = PipeAxis(first);
+        XYZ secondAxisBefore = PipeAxis(second);
+        string placementFailure = string.Empty;
+
+        // For geometry-sensitive routes (Cases 02/05/06), let the fitting
+        // follow the already approved pipe axes. NewElbowFitting may trim a
+        // long-takeout socket fitting into both adjacent short pipes and, in
+        // Revit 2020, reverse one pipe before failure processing can roll it
+        // back cleanly. Direct connector placement trims each endpoint to the
+        // real family takeout without asking Revit to solve a new pipe route.
+        if (preservePipeAxes)
         {
-            FamilyInstance elbow = document.Create.NewElbowFitting(
-                DrainSelection.ConnectorNear(first, point, true),
-                DrainSelection.ConnectorNear(second, point, true));
-            document.Regenerate();
-            return elbow;
+            FamilyInstance? direct = TryPlaceCase06ElbowFromRoutingRules(
+                document,
+                first,
+                second,
+                point,
+                out placementFailure);
+            if (direct is not null)
+                return direct;
+
+            first = RequirePipe(document, firstId, $"{operationLabel} first pipe");
+            second = RequirePipe(document, secondId, $"{operationLabel} second pipe");
         }
-        catch (Exception exception)
+
+        string nativeFailure = string.Empty;
+        using (var nativeAttempt = new SubTransaction(document))
         {
+            nativeAttempt.Start();
+            try
+            {
+                FamilyInstance elbow = document.Create.NewElbowFitting(
+                    DrainSelection.ConnectorNear(first, point, true),
+                    DrainSelection.ConnectorNear(second, point, true));
+                document.Regenerate();
+                if (preservePipeAxes)
+                {
+                    Pipe firstAfter = RequirePipe(
+                        document,
+                        firstId,
+                        $"{operationLabel} first pipe");
+                    Pipe secondAfter = RequirePipe(
+                        document,
+                        secondId,
+                        $"{operationLabel} second pipe");
+                    double firstRotation = AcuteDegrees(
+                        firstAxisBefore,
+                        PipeAxis(firstAfter));
+                    double secondRotation = AcuteDegrees(
+                        secondAxisBefore,
+                        PipeAxis(secondAfter));
+                    if (firstRotation > 0.05 || secondRotation > 0.05)
+                        throw new InvalidOperationException(
+                            $"Revit rotated the connected pipe axes by " +
+                            $"{firstRotation:0.###}° and {secondRotation:0.###}°");
+                }
+                if (nativeAttempt.Commit() == TransactionStatus.Committed)
+                    return elbow;
+                nativeFailure = "Revit rolled back NewElbowFitting.";
+            }
+            catch (Exception exception)
+            {
+                nativeFailure = exception.Message;
+                if (nativeAttempt.GetStatus() == TransactionStatus.Started)
+                    nativeAttempt.RollBack();
+            }
+        }
+
+        if (!preservePipeAxes)
+        {
+            first = RequirePipe(document, firstId, $"{operationLabel} first pipe");
+            second = RequirePipe(document, secondId, $"{operationLabel} second pipe");
+            FamilyInstance? placed = TryPlaceCase06ElbowFromRoutingRules(
+                document,
+                first,
+                second,
+                point,
+                out placementFailure);
+            if (placed is not null)
+                return placed;
+        }
+
+        throw new InvalidOperationException(
+            $"{operationLabel} could not be created. " +
+            $"NewElbowFitting: {nativeFailure}. " +
+            $"Direct routing-family placement: {placementFailure}");
+    }
+
+    private static XYZ PipeAxis(Pipe pipe)
+    {
+        if (pipe.Location is not LocationCurve location)
             throw new InvalidOperationException(
-                $"Case 05 {label} could not be created: {exception.Message}",
-                exception);
+                $"Pipe {pipe.Id.CompatValue()} has no readable centerline.");
+        return (location.Curve.GetEndPoint(1) -
+                location.Curve.GetEndPoint(0)).Normalize();
+    }
+
+    private static FamilyInstance? TryPlaceCase06ElbowFromRoutingRules(
+        Document document,
+        Pipe first,
+        Pipe second,
+        XYZ point,
+        out string failure)
+    {
+        failure = string.Empty;
+        if (document.GetElement(first.GetTypeId()) is not PipeType pipeType)
+        {
+            failure = "The branch Pipe Type is unavailable.";
+            return null;
+        }
+
+        RoutingPreferenceManager manager = pipeType.RoutingPreferenceManager;
+        int ruleCount = manager.GetNumberOfRules(
+            RoutingPreferenceRuleGroupType.Elbows);
+        IReadOnlyList<ElementId> symbolIds = Enumerable.Range(0, ruleCount)
+            .Select(index => manager.GetRule(
+                RoutingPreferenceRuleGroupType.Elbows,
+                index).MEPPartId)
+            .Where(id => id != ElementId.InvalidElementId)
+            .Distinct()
+            .ToList();
+        if (symbolIds.Count == 0)
+        {
+            failure = "The branch Pipe Type has no elbow routing families.";
+            return null;
+        }
+
+        XYZ firstAxis = PipeDirectionAwayFrom(first, point).Normalize();
+        XYZ secondAxis = PipeDirectionAwayFrom(second, point).Normalize();
+        double requiredAngle = AcuteDegrees(firstAxis, secondAxis);
+        double diameter = first
+            .get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)?
+            .AsDouble() ?? 0.0;
+        var failures = new List<string>();
+
+        foreach (ElementId symbolId in symbolIds)
+        {
+            if (document.GetElement(symbolId) is not FamilySymbol symbol)
+                continue;
+            foreach (bool reverse in new[] { false, true })
+            {
+                using var attempt = new SubTransaction(document);
+                attempt.Start();
+                try
+                {
+                    if (!symbol.IsActive)
+                    {
+                        symbol.Activate();
+                        document.Regenerate();
+                    }
+
+                    FamilyInstance elbow = document.Create.NewFamilyInstance(
+                        point,
+                        symbol,
+                        StructuralType.NonStructural);
+                    document.Regenerate();
+                    IReadOnlyList<Connector> initial = DrainSelection.GetConnectors(elbow);
+                    if (initial.Count != 2)
+                        throw new InvalidOperationException(
+                            $"family has {initial.Count} round piping connectors");
+
+                    if (diameter > 0.0)
+                    {
+                        foreach (Connector connector in initial)
+                        {
+                            if (Math.Abs(connector.Radius * 2.0 - diameter) <=
+                                DrainGeometry.Mm(0.5))
+                                continue;
+                            connector.Radius = diameter * 0.5;
+                        }
+                        document.Regenerate();
+                        initial = DrainSelection.GetConnectors(elbow);
+                    }
+
+                    // Some manufacturer elbows open at 47 degrees when placed
+                    // unconnected even though the catalog/routing name is 45.
+                    // If the family exposes a writable angle parameter, flex
+                    // this instance to the already approved pipe-centerline
+                    // angle before orientation and connection.
+                    TrySetFittingAngleParameters(elbow, requiredAngle);
+                    document.Regenerate();
+                    initial = DrainSelection.GetConnectors(elbow);
+
+                    Connector sourceFirst = initial[reverse ? 1 : 0];
+                    Connector sourceSecond = initial[reverse ? 0 : 1];
+                    int sourceFirstId = sourceFirst.Id;
+                    int sourceSecondId = sourceSecond.Id;
+                    XYZ intersection = ClosestAxisIntersection(
+                        sourceFirst.Origin,
+                        sourceFirst.CoordinateSystem.BasisZ,
+                        sourceSecond.Origin,
+                        sourceSecond.CoordinateSystem.BasisZ);
+                    XYZ sourceFirstRay = ConnectorRay(sourceFirst, intersection);
+                    XYZ sourceSecondRay = ConnectorRay(sourceSecond, intersection);
+                    double familyAngle = AcuteDegrees(sourceFirstRay, sourceSecondRay);
+                    if (Math.Abs(familyAngle - requiredAngle) > 0.35)
+                        throw new InvalidOperationException(
+                            $"connector angle {familyAngle:0.###} degrees does not fit " +
+                            $"the required {requiredAngle:0.###} degrees");
+
+                    RotateVectorToVector(
+                        document,
+                        elbow.Id,
+                        point,
+                        sourceFirstRay,
+                        firstAxis);
+                    document.Regenerate();
+
+                    IReadOnlyList<Connector> afterFirstRotation =
+                        DrainSelection.GetConnectors(elbow);
+                    sourceFirst = afterFirstRotation.Single(item => item.Id == sourceFirstId);
+                    sourceSecond = afterFirstRotation.Single(item => item.Id == sourceSecondId);
+                    intersection = ClosestAxisIntersection(
+                        sourceFirst.Origin,
+                        sourceFirst.CoordinateSystem.BasisZ,
+                        sourceSecond.Origin,
+                        sourceSecond.CoordinateSystem.BasisZ);
+                    sourceSecondRay = ConnectorRay(sourceSecond, intersection);
+                    double roll = SignedAngle(
+                        PerpendicularComponent(sourceSecondRay, firstAxis),
+                        PerpendicularComponent(secondAxis, firstAxis),
+                        firstAxis);
+                    if (Math.Abs(roll) > 1e-8)
+                    {
+                        ElementTransformUtils.RotateElement(
+                            document,
+                            elbow.Id,
+                            Line.CreateUnbound(point, firstAxis),
+                            roll);
+                        document.Regenerate();
+                    }
+
+                    IReadOnlyList<Connector> oriented = DrainSelection.GetConnectors(elbow);
+                    sourceFirst = oriented.Single(item => item.Id == sourceFirstId);
+                    sourceSecond = oriented.Single(item => item.Id == sourceSecondId);
+                    intersection = ClosestAxisIntersection(
+                        sourceFirst.Origin,
+                        sourceFirst.CoordinateSystem.BasisZ,
+                        sourceSecond.Origin,
+                        sourceSecond.CoordinateSystem.BasisZ);
+                    ElementTransformUtils.MoveElement(
+                        document,
+                        elbow.Id,
+                        point - intersection);
+                    document.Regenerate();
+
+                    IReadOnlyList<Connector> fitted = DrainSelection.GetConnectors(elbow);
+                    sourceFirst = fitted.Single(item => item.Id == sourceFirstId);
+                    sourceSecond = fitted.Single(item => item.Id == sourceSecondId);
+                    MovePipeEnd(first, point, sourceFirst.Origin);
+                    MovePipeEnd(second, point, sourceSecond.Origin);
+                    document.Regenerate();
+                    ConnectCoincident(document, first, sourceFirst);
+                    ConnectCoincident(document, second, sourceSecond);
+                    if (attempt.Commit() != TransactionStatus.Committed)
+                        throw new InvalidOperationException(
+                            "Revit rolled back direct elbow placement");
+                    return elbow;
+                }
+                catch (Exception exception)
+                {
+                    failures.Add(
+                        $"{symbol.FamilyName}: {symbol.Name}" +
+                        (reverse ? " [reversed]" : string.Empty) +
+                        $": {exception.Message}");
+                    if (attempt.GetStatus() == TransactionStatus.Started)
+                        attempt.RollBack();
+                }
+            }
+        }
+
+        failure = string.Join(" | ", failures.Distinct().TakeLast(6));
+        return null;
+    }
+
+    private static void TrySetFittingAngleParameters(
+        FamilyInstance fitting,
+        double angleDegrees)
+    {
+        double angleRadians = angleDegrees * Math.PI / 180.0;
+        foreach (Parameter parameter in fitting.Parameters.Cast<Parameter>())
+        {
+            if (parameter.IsReadOnly ||
+                parameter.StorageType != StorageType.Double)
+                continue;
+            string name = parameter.Definition?.Name ?? string.Empty;
+            bool looksLikeAngle =
+                name.Contains("angle", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("winkel", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("góc", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("bend", StringComparison.OrdinalIgnoreCase);
+            if (!looksLikeAngle)
+                continue;
+            try
+            {
+                parameter.Set(angleRadians);
+            }
+            catch
+            {
+                // Continue with another writable angle parameter. The caller
+                // verifies the real connector axes after regeneration.
+            }
         }
     }
 
-    private static void ValidateCase05PipeAxes(
+    private static void ValidateCase06PipeAxes(
         Pipe vertical,
         Pipe diagonal,
         Pipe pipeA,
@@ -1027,7 +2042,7 @@ internal static class DrainRoutingService
             diagonal.Location is not LocationCurve diagonalLocation ||
             pipeA.Location is not LocationCurve pipeALocation)
             throw new InvalidOperationException(
-                "Case 05 could not read the created pipe centerlines.");
+                "Case 06 could not read the created pipe centerlines.");
 
         XYZ verticalStart = verticalLocation.Curve.GetEndPoint(0);
         XYZ verticalEnd = verticalLocation.Curve.GetEndPoint(1);
@@ -1082,6 +2097,7 @@ internal static class DrainRoutingService
         Context context,
         DrainRoute route)
     {
+        ValidateRouteFallsToMain(route, $"Case {route.CaseNumber:00} route");
         var ids = new List<ElementId>();
         Pipe target = document.GetElement(context.Target.Id) as Pipe
             ?? throw new InvalidOperationException("The target main is no longer available.");
@@ -1112,6 +2128,12 @@ internal static class DrainRoutingService
             DrainSelection.ConnectorNear(diagonal, route.StubEnd, true));
         ids.Add(elbow45.Id);
         document.Regenerate();
+        ValidatePipeFallsTowardMain(
+            standing, route.DrainOrigin, route.StubEnd,
+            "Case 03 standing device drop");
+        ValidatePipeFallsTowardMain(
+            diagonal, route.StubEnd, route.WyePoint,
+            "Case 03 diagonal into main");
 
         return new DrainOperationResult(
             true,
@@ -1125,8 +2147,12 @@ internal static class DrainRoutingService
     private static DrainOperationResult CreateBranchOnlyCase04(
         Document document,
         Context context,
-        DrainRoute route)
+        DrainRoute route,
+        double minimumMiddlePipeLength,
+        ElementId sourceId,
+        ElementId targetId)
     {
+        ValidateRouteFallsToMain(route, "Case 04 route");
         XYZ secondElbow = route.NearMainElbow
             ?? throw new InvalidOperationException(
                 "Case 04 did not calculate its second 45 degree elbow.");
@@ -1134,15 +2160,29 @@ internal static class DrainRoutingService
             ?? throw new InvalidOperationException(
                 "Case 04 did not calculate its main-extension elbow.");
         var ids = new List<ElementId>();
-        Pipe target = document.GetElement(context.Target.Id) as Pipe
+        Pipe target = document.GetElement(targetId) as Pipe
             ?? throw new InvalidOperationException("The target main is no longer available.");
-        Element source = document.GetElement(context.Source.Id)
-            ?? throw new InvalidOperationException("The source drain is no longer available.");
+        string stage = "prepare the picked main endpoint";
 
-        ExtendOpenMainEndpoint(target, route.WyePoint, extensionElbow);
-        document.Regenerate();
-        Connector targetEnd = DrainSelection.ConnectorNear(target, extensionElbow, true);
+        try
+        {
+            // The picked point may be inside the selected main. Convert it into an
+            // open endpoint by deleting only the shorter surplus side, then extend
+            // the retained side for the two-45 layout.
+            target = PreparePickedMainEndpoint(
+                document,
+                target,
+                route.MainStart,
+                route.WyePoint);
+            stage = "extend the retained main to the first plan elbow";
+            target = ExtendOpenMainEndpoint(
+                document,
+                target,
+                route.WyePoint,
+                extensionElbow);
+            ElementId targetPipeId = target.Id;
 
+        stage = "create the device-side and plan pipes";
         ApproachPipes approach = CreateApproachPipes(document, context, route, ids);
         Pipe straightBranch = CreatePipe(
             document,
@@ -1154,58 +2194,124 @@ internal static class DrainRoutingService
             context,
             secondElbow,
             extensionElbow);
+        ElementId stubId = approach.Stub.Id;
+        ElementId approachDiagonalId = approach.Diagonal.Id;
+        ElementId straightBranchId = straightBranch.Id;
+        ElementId turnDiagonalId = turnDiagonal.Id;
         ids.AddRange([straightBranch.Id, turnDiagonal.Id]);
         document.Regenerate();
 
         // Anchor the vertical stub to the drain before Revit resolves any
         // elbows. Otherwise the last ConnectTo call can pull the whole compact
         // device-side pair sideways and leave a visibly tilted drop pipe.
+        stage = "connect the device reducer or leave its DN gap";
+        Element source = document.GetElement(sourceId)
+            ?? throw new InvalidOperationException("The source drain is no longer available.");
         Connector sourceConnector = DrainSelection.ChooseSourceConnector(source);
-        FamilyInstance? sourceTransition = ConnectCase04Source(
+        SourceConnection sourceConnection = ConnectCase04Source(
             document,
+            context,
             sourceConnector,
             approach.Stub,
             route);
+        approach = new ApproachPipes(
+            RequirePipe(document, stubId, "Case 04 device stub"),
+            RequirePipe(document, approachDiagonalId, "Case 04 device diagonal"));
+        straightBranch = RequirePipe(
+            document,
+            straightBranchId,
+            "Case 04 straight branch");
+        turnDiagonal = RequirePipe(
+            document,
+            turnDiagonalId,
+            "Case 04 plan diagonal");
+        stage = "create the upper device-side 45 degree elbow";
         FamilyInstance source45A = CreateCase04Elbow(
             document, approach.Stub, approach.Diagonal, route.StubEnd,
             "upper device-side 45 degree elbow");
+        stage = "create the lower device-side 45 degree elbow";
         FamilyInstance source45B = CreateCase04Elbow(
             document, approach.Diagonal, straightBranch, route.DiagonalEnd,
             "lower device-side 45 degree elbow");
+        document.Regenerate();
+        ValidateMinimumMiddlePipeLength(
+            approach.Diagonal,
+            minimumMiddlePipeLength);
+        stage = "create the second plan 45 degree elbow";
         FamilyInstance second45 = CreateCase04Elbow(
             document, straightBranch, turnDiagonal, secondElbow,
             "second plan 45 degree elbow");
-        FamilyInstance main45;
-        try
-        {
-            main45 = document.Create.NewElbowFitting(
-                DrainSelection.ConnectorNear(turnDiagonal, extensionElbow, true),
-                targetEnd);
-            document.Regenerate();
-        }
-        catch (Exception exception)
-        {
-            throw new InvalidOperationException(
-                $"Case 04 main-extension 45 degree elbow could not be created: {exception.Message}",
-                exception);
-        }
+        stage = "create the main-extension 45 degree elbow";
+        FamilyInstance main45 = CreateCase04Elbow(
+            document,
+            turnDiagonal,
+            target,
+            extensionElbow,
+            "main-extension 45 degree elbow");
         ValidateVerticalDeviceStub(approach.Stub, route.DrainOrigin);
+        if (sourceConnection.Adapter is not null)
+        {
+            ValidateVerticalDeviceStub(sourceConnection.Adapter, route.DrainOrigin);
+            ValidateVerticalPipeAlignment(sourceConnection.Adapter, approach.Stub);
+        }
         ids.AddRange([
             source45A.Id,
             source45B.Id,
             second45.Id,
             main45.Id]);
-        if (sourceTransition is not null)
-            ids.Add(sourceTransition.Id);
+        AddSourceConnectionIds(ids, sourceConnection);
         document.Regenerate();
 
-        return new DrainOperationResult(
-            true,
-            false,
-            "Case 04 created: the open main was extended, then two 45 degree plan elbows " +
-            "and a straight run connected it to the device. Main DN, type, and slope were retained.",
-            route,
-            ids);
+        approach = new ApproachPipes(
+            RequirePipe(document, stubId, "Case 04 device stub"),
+            RequirePipe(document, approachDiagonalId, "Case 04 device diagonal"));
+        straightBranch = RequirePipe(
+            document, straightBranchId, "Case 04 straight branch");
+        turnDiagonal = RequirePipe(
+            document, turnDiagonalId, "Case 04 plan diagonal");
+        target = RequirePipe(document, targetPipeId, "Case 04 retained main");
+        ValidatePipeFallsTowardMain(
+            approach.Stub, route.DrainOrigin, route.StubEnd,
+            "Case 04 device drop");
+        ValidatePipeFallsTowardMain(
+            approach.Diagonal, route.StubEnd, route.DiagonalEnd,
+            "Case 04 device-side diagonal");
+        ValidatePipeFallsTowardMain(
+            straightBranch, route.DiagonalEnd, secondElbow,
+            "Case 04 straight branch");
+        ValidatePipeFallsTowardMain(
+            turnDiagonal, secondElbow, extensionElbow,
+            "Case 04 diagonal into main extension");
+        ValidatePipeFallsAwayFromConnection(
+            target,
+            extensionElbow,
+            "Case 04 retained main after the endpoint elbow");
+
+        string resultMessage = sourceConnection.HasOpenBreak
+            ? "Case 04 created: the open main was extended and the route was completed. " +
+              $"The DN change remains as an open break at the device drop" +
+              (sourceConnection.BreakPoint is null
+                  ? "."
+                  : $" ({DrainGeometry.ToMm(sourceConnection.BreakPoint.X):0.#}, " +
+                    $"{DrainGeometry.ToMm(sourceConnection.BreakPoint.Y):0.#}, " +
+                    $"{DrainGeometry.ToMm(sourceConnection.BreakPoint.Z):0.#} mm).") +
+              $" {sourceConnection.Warning}"
+            : "Case 04 created: the open main was extended, then two 45 degree plan elbows " +
+              "and a straight run connected it to the device. Main DN, type, and slope were retained.";
+
+            return new DrainOperationResult(
+                true,
+                false,
+                resultMessage,
+                route,
+                ids);
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException(
+                $"Case 04 failed while trying to {stage}: {exception.Message}",
+                exception);
+        }
     }
 
     private static FamilyInstance CreateCase04Elbow(
@@ -1213,15 +2319,18 @@ internal static class DrainRoutingService
         Pipe first,
         Pipe second,
         XYZ point,
-        string label)
+        string label,
+        bool preservePipeAxes = false)
     {
         try
         {
-            FamilyInstance elbow = document.Create.NewElbowFitting(
-                DrainSelection.ConnectorNear(first, point, true),
-                DrainSelection.ConnectorNear(second, point, true));
-            document.Regenerate();
-            return elbow;
+            return CreateElbowWithRoutingFallback(
+                document,
+                first,
+                second,
+                point,
+                $"Case 04 {label}",
+                preservePipeAxes);
         }
         catch (Exception exception)
         {
@@ -1229,6 +2338,115 @@ internal static class DrainRoutingService
                 $"Case 04 {label} could not be created: {exception.Message}",
                 exception);
         }
+    }
+
+    private static void ValidateRouteFallsToMain(
+        DrainRoute route,
+        string label)
+    {
+        double tolerance = DrainGeometry.Mm(0.5);
+        var points = new List<XYZ>
+        {
+            route.DrainOrigin,
+            route.StubEnd
+        };
+        if (points[^1].DistanceTo(route.DiagonalEnd) > tolerance)
+            points.Add(route.DiagonalEnd);
+
+        if (route.NearMainElbow is XYZ nearMain &&
+            points[^1].DistanceTo(nearMain) > tolerance)
+            points.Add(nearMain);
+        if (route.MainExtensionElbow is XYZ extension &&
+            points[^1].DistanceTo(extension) > tolerance)
+            points.Add(extension);
+        if (points[^1].DistanceTo(route.WyePoint) > tolerance)
+            points.Add(route.WyePoint);
+
+        if (route.DrainOrigin.Z <= route.WyePoint.Z + tolerance)
+            throw new InvalidOperationException(
+                $"{label}: the device must be higher than the main connection. " +
+                $"Device Z={DrainGeometry.ToMm(route.DrainOrigin.Z):0.###} mm, " +
+                $"main Z={DrainGeometry.ToMm(route.WyePoint.Z):0.###} mm.");
+
+        for (int index = 0; index < points.Count - 1; index++)
+        {
+            XYZ upstream = points[index];
+            XYZ downstream = points[index + 1];
+            if (downstream.Z > upstream.Z + tolerance)
+                throw new InvalidOperationException(
+                    $"{label}: segment {index + 1} rises " +
+                    $"{DrainGeometry.ToMm(downstream.Z - upstream.Z):0.###} mm " +
+                    "toward the main. Only level or downward flow is allowed.");
+        }
+    }
+
+    private static void ValidatePipeFallsTowardMain(
+        Pipe pipe,
+        XYZ upstreamReference,
+        XYZ downstreamReference,
+        string label)
+    {
+        if (pipe.Location is not LocationCurve location)
+            throw new InvalidOperationException(
+                $"{label}: the pipe centerline is unavailable.");
+        XYZ first = location.Curve.GetEndPoint(0);
+        XYZ second = location.Curve.GetEndPoint(1);
+        double normalCost =
+            first.DistanceTo(upstreamReference) +
+            second.DistanceTo(downstreamReference);
+        double reversedCost =
+            second.DistanceTo(upstreamReference) +
+            first.DistanceTo(downstreamReference);
+        XYZ upstream = normalCost <= reversedCost ? first : second;
+        XYZ downstream = normalCost <= reversedCost ? second : first;
+        ValidateDownwardElevation(upstream, downstream, label);
+    }
+
+    private static void ValidatePipeFallsIntoConnection(
+        Pipe pipe,
+        XYZ connectionPoint,
+        string label)
+    {
+        if (pipe.Location is not LocationCurve location)
+            throw new InvalidOperationException(
+                $"{label}: the pipe centerline is unavailable.");
+        XYZ first = location.Curve.GetEndPoint(0);
+        XYZ second = location.Curve.GetEndPoint(1);
+        bool firstIsConnection =
+            first.DistanceTo(connectionPoint) <= second.DistanceTo(connectionPoint);
+        XYZ downstream = firstIsConnection ? first : second;
+        XYZ upstream = firstIsConnection ? second : first;
+        ValidateDownwardElevation(upstream, downstream, label);
+    }
+
+    private static void ValidatePipeFallsAwayFromConnection(
+        Pipe pipe,
+        XYZ connectionPoint,
+        string label)
+    {
+        if (pipe.Location is not LocationCurve location)
+            throw new InvalidOperationException(
+                $"{label}: the pipe centerline is unavailable.");
+        XYZ first = location.Curve.GetEndPoint(0);
+        XYZ second = location.Curve.GetEndPoint(1);
+        bool firstIsConnection =
+            first.DistanceTo(connectionPoint) <= second.DistanceTo(connectionPoint);
+        XYZ upstream = firstIsConnection ? first : second;
+        XYZ downstream = firstIsConnection ? second : first;
+        ValidateDownwardElevation(upstream, downstream, label);
+    }
+
+    private static void ValidateDownwardElevation(
+        XYZ upstream,
+        XYZ downstream,
+        string label)
+    {
+        double rise = downstream.Z - upstream.Z;
+        if (rise > DrainGeometry.Mm(0.5))
+            throw new InvalidOperationException(
+                $"{label}: the pipe rises {DrainGeometry.ToMm(rise):0.###} mm " +
+                "toward the main. The candidate was rejected because drainage " +
+                "must remain level or fall continuously toward the main.");
     }
 
     private static void ValidateVerticalDeviceStub(Pipe stub, XYZ drainOrigin)
@@ -1250,11 +2468,135 @@ internal static class DrainRoutingService
                 $"Case 04 rejected a tilted device drop pipe ({DrainGeometry.ToMm(planShift):0.###} mm plan offset)." );
     }
 
-    private static void ExtendOpenMainEndpoint(
+    private static IReadOnlyList<double> ResolveRoutingElbowAngles(
+        Document document,
+        PipeType pipeType,
+        double diameter)
+    {
+        RoutingPreferenceManager manager = pipeType.RoutingPreferenceManager;
+        int ruleCount = manager.GetNumberOfRules(
+            RoutingPreferenceRuleGroupType.Elbows);
+        IReadOnlyList<ElementId> symbolIds = Enumerable.Range(0, ruleCount)
+            .Select(index => manager.GetRule(
+                RoutingPreferenceRuleGroupType.Elbows,
+                index).MEPPartId)
+            .Where(id => id != ElementId.InvalidElementId)
+            .Distinct()
+            .ToList();
+        ElementId preferredSymbolId = ElementId.InvalidElementId;
+        try
+        {
+            using var conditions = new RoutingConditions(
+                RoutingPreferenceErrorLevel.None);
+            conditions.AppendCondition(new RoutingCondition(diameter));
+            preferredSymbolId = manager.GetMEPPartId(
+                RoutingPreferenceRuleGroupType.Elbows,
+                conditions);
+        }
+        catch
+        {
+            // Fall back to routing-rule order when this Revit version or pipe
+            // family does not resolve an elbow from a single size condition.
+        }
+        symbolIds = symbolIds
+            .OrderByDescending(id => id == preferredSymbolId)
+            .ToList();
+        var angles = new List<double>();
+
+        // Always inspect a fresh, unconnected symbol instance. An elbow that
+        // is already connected in the model can have its instance geometry
+        // flexed by Revit (45 degrees here) even though the routing family
+        // definition still has fixed 47-degree connector axes.
+        if (symbolIds.Count > 0)
+        {
+            using var inspect = new Transaction(
+                document,
+                "Measure drain elbow connector angles");
+            inspect.Start();
+            try
+            {
+                foreach (ElementId symbolId in symbolIds)
+                {
+                    if (document.GetElement(symbolId) is not FamilySymbol symbol)
+                        continue;
+                    try
+                    {
+                        if (!symbol.IsActive)
+                        {
+                            symbol.Activate();
+                            document.Regenerate();
+                        }
+                        FamilyInstance sample = document.Create.NewFamilyInstance(
+                            XYZ.Zero,
+                            symbol,
+                            StructuralType.NonStructural);
+                        document.Regenerate();
+                        IReadOnlyList<Connector> connectors =
+                            DrainSelection.GetConnectors(sample);
+                        if (connectors.Count != 2)
+                            continue;
+                        if (diameter > 0)
+                        {
+                            foreach (Connector connector in connectors)
+                            {
+                                if (Math.Abs(connector.Radius * 2.0 - diameter) >
+                                    DrainGeometry.Mm(0.5))
+                                    connector.Radius = diameter * 0.5;
+                            }
+                            document.Regenerate();
+                            connectors = DrainSelection.GetConnectors(sample);
+                        }
+                        double angle = AcuteDegrees(
+                            connectors[0].CoordinateSystem.BasisZ,
+                            connectors[1].CoordinateSystem.BasisZ);
+                        if (angle is > 5.0 and < 85.0)
+                            angles.Add(angle);
+                    }
+                    catch
+                    {
+                        // Continue with the next routing rule. The whole
+                        // inspection transaction is rolled back below.
+                    }
+                }
+            }
+            finally
+            {
+                if (inspect.GetStatus() == TransactionStatus.Started)
+                    inspect.RollBack();
+            }
+        }
+
+        IReadOnlyList<double> measured = angles
+            .Select(angle => Math.Round(angle, 6))
+            .Distinct()
+            .ToList();
+        return measured.Count > 0 ? measured : [45.0];
+    }
+
+    private static void ValidateVerticalPipeAlignment(Pipe upper, Pipe lower)
+    {
+        if (upper.Location is not LocationCurve upperLocation ||
+            lower.Location is not LocationCurve lowerLocation)
+            throw new InvalidOperationException(
+                "Case 04 could not compare the device drop centerlines.");
+        XYZ upperPoint = upperLocation.Curve.GetEndPoint(0);
+        XYZ lowerPoint = lowerLocation.Curve.GetEndPoint(0);
+        double planOffset = Math.Sqrt(
+            Math.Pow(upperPoint.X - lowerPoint.X, 2) +
+            Math.Pow(upperPoint.Y - lowerPoint.Y, 2));
+        if (planOffset > DrainGeometry.Mm(0.5))
+            throw new InvalidOperationException(
+                $"The selected reducer offsets the Case 04 device drop by " +
+                $"{DrainGeometry.ToMm(planOffset):0.###} mm in plan.");
+    }
+
+    private static Pipe ExtendOpenMainEndpoint(
+        Document document,
         Pipe target,
         XYZ oldEndpoint,
         XYZ newEndpoint)
     {
+        ElementId targetId = target.Id;
         if (target.Location is not LocationCurve location)
             throw new InvalidOperationException("Case 04 cannot read the main centerline.");
         XYZ start = location.Curve.GetEndPoint(0);
@@ -1266,13 +2608,112 @@ internal static class DrainRoutingService
         location.Curve = replaceStart
             ? Line.CreateBound(newEndpoint, fixedEnd)
             : Line.CreateBound(fixedEnd, newEndpoint);
+        document.Regenerate();
+        Pipe refreshed = document.GetElement(targetId) as Pipe
+            ?? throw new InvalidOperationException(
+                "The retained main disappeared after its endpoint was moved.");
+        if (!HasEndAt(refreshed, newEndpoint))
+            throw new InvalidOperationException(
+                "The retained main did not finish at the calculated elbow point.");
+        return refreshed;
+    }
+
+    private static Pipe PreparePickedMainEndpoint(
+        Document document,
+        Pipe selectedMain,
+        XYZ retainedSidePoint,
+        XYZ requestedEndpoint)
+    {
+        ElementId selectedMainId = selectedMain.Id;
+        if (selectedMain.Location is not LocationCurve location)
+            throw new InvalidOperationException(
+                "The selected main has no centerline for endpoint preparation.");
+
+        XYZ start = location.Curve.GetEndPoint(0);
+        XYZ end = location.Curve.GetEndPoint(1);
+        double endpointTolerance = DrainGeometry.Mm(2);
+        if (requestedEndpoint.DistanceTo(start) <= endpointTolerance ||
+            requestedEndpoint.DistanceTo(end) <= endpointTolerance)
+        {
+            return selectedMain;
+        }
+
+        IntersectionResult projection = location.Curve.Project(requestedEndpoint)
+            ?? throw new InvalidOperationException(
+                "The picked endpoint could not be projected to the selected main.");
+        XYZ breakPoint = projection.XYZPoint;
+        double minimumTail = Math.Max(
+            DrainGeometry.Mm(20),
+            selectedMain.get_Parameter(
+                BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)?.AsDouble() ?? 0.0);
+        if (breakPoint.DistanceTo(start) <= minimumTail ||
+            breakPoint.DistanceTo(end) <= minimumTail)
+        {
+            throw new InvalidOperationException(
+                "The picked point is too close to a connected main end. " +
+                "Pick at least one pipe diameter away from that end.");
+        }
+
+        // Keep the selected pipe's ElementId stable. BreakCurve may retain the
+        // original id on either side depending on the Revit version; deleting
+        // the short side can therefore invalidate Context.Target. Trimming the
+        // same LocationCurve removes the surplus geometry without replacing
+        // the element that the remaining creation code already references.
+        XYZ retainedByGravity = RetainedMainEndpoint(
+            start,
+            end,
+            breakPoint);
+        bool retainStart = retainedByGravity.DistanceTo(start) <=
+                           retainedByGravity.DistanceTo(end);
+        XYZ retainedEndpoint = retainStart ? start : end;
+        XYZ discardedEndpoint = retainStart ? end : start;
+        DisconnectPipeEndpoint(selectedMain, discardedEndpoint);
+        location.Curve = retainStart
+            ? Line.CreateBound(retainedEndpoint, breakPoint)
+            : Line.CreateBound(breakPoint, retainedEndpoint);
+        document.Regenerate();
+
+        Pipe refreshed = document.GetElement(selectedMainId) as Pipe
+            ?? throw new InvalidOperationException(
+                "The retained main disappeared after the surplus tail was removed.");
+        if (!HasEndAt(refreshed, breakPoint))
+            throw new InvalidOperationException(
+                "The retained main did not end at the requested connection point.");
+        return refreshed;
+    }
+
+    private static void DisconnectPipeEndpoint(Pipe pipe, XYZ endpoint)
+    {
+        Connector? connector = DrainSelection.GetConnectors(pipe)
+            .OrderBy(item => item.Origin.DistanceTo(endpoint))
+            .FirstOrDefault();
+        if (connector is null || connector.Origin.DistanceTo(endpoint) > DrainGeometry.Mm(3))
+            return;
+
+        IReadOnlyList<Connector> references = connector.AllRefs
+            .Cast<Connector>()
+            .Where(reference => reference.Owner?.Id != pipe.Id)
+            .ToList();
+        foreach (Connector reference in references)
+        {
+            try
+            {
+                connector.DisconnectFrom(reference);
+            }
+            catch
+            {
+                // Setting the shortened centerline below is authoritative. A
+                // connector that Revit already detached needs no extra action.
+            }
+        }
     }
 
     private static DrainOperationResult CompleteWithRoutedY(
         Document document,
         Context context,
         DrainOperationResult stage1,
-        List<string> failures)
+        List<string> failures,
+        DrainSettings settings)
     {
         DrainRoute route = stage1.Route
             ?? throw new InvalidOperationException("Stage 1 did not return its route.");
@@ -1305,25 +2746,32 @@ internal static class DrainRoutingService
                     document,
                     context.TargetPipeType,
                     context.MainDiameter,
-                    context.BranchDiameter);
+                    context.BranchDiameter,
+                    settings.JunctionSymbolId,
+                    settings.JunctionAnglesBySymbolId,
+                    route.FittingAngleDegrees);
                 if (prepare.Commit() != TransactionStatus.Committed)
                     throw new InvalidOperationException(
                         "Revit could not isolate the main Pipe Type Junction routing rules.");
             }
 
-            IReadOnlyList<PreparedJunctionType> angleMatchedTypes = allPreparedTypes
-                .Where(item =>
-                    Math.Abs(item.FittingAngleDegrees - route.FittingAngleDegrees) <= 2.0)
-                .ToList();
-            IReadOnlyList<PreparedJunctionType> preparedTypes =
-                angleMatchedTypes.Count > 0 ? angleMatchedTypes : allPreparedTypes;
+            // Stage 2 is connector-driven. Do not filter a selected family by a
+            // nominal/parameter angle; each candidate is oriented from its real
+            // connector axes and accepted only when all three pipes connect.
+            IReadOnlyList<PreparedJunctionType> preparedTypes = allPreparedTypes;
             IReadOnlyList<ElementId> allPreparedTypeIds = allPreparedTypes
+                .Where(item => item.NativeRouting)
                 .Select(item => item.TypeId)
                 .ToList();
-            // Reducing Y families in project routing preferences carry the
-            // main size on both run connectors and the device size on their
-            // branch connector. Do not force a same-size Y seed first.
-            bool[] seedStrategies = [false];
+            // Try the selected family as a reducing Y first. When its branch
+            // connector is fixed at the run diameter, retry with a short
+            // main-DN seed and a reducer back to the device branch diameter.
+            bool reducingConnection = Math.Abs(
+                context.MainDiameter - context.BranchDiameter) >
+                DrainGeometry.Mm(0.5);
+            bool[] seedStrategies = reducingConnection
+                ? [false, true]
+                : [false];
 
             foreach (PreparedJunctionType preparedType in preparedTypes)
             {
@@ -1358,7 +2806,8 @@ internal static class DrainRoutingService
                             // Force this attempt to use exactly one Junction routing
                             // family. Revit otherwise stops at the first compatible-DN
                             // Tee rule and never advances to the following 45-degree Y.
-                            target.ChangeTypeId(preparedType.TypeId);
+                            if (preparedType.NativeRouting)
+                                target.ChangeTypeId(preparedType.TypeId);
                             branch = document.GetElement(branch.Id) as Pipe
                                 ?? throw new InvalidOperationException(
                                     "The Stage 1 branch is no longer available.");
@@ -1375,7 +2824,24 @@ internal static class DrainRoutingService
                                     preparedType.TypeId);
                                 junctionLeg = seed.Pipe;
                             }
+                            double fittingBranchDiameter = seed is null
+                                ? context.BranchDiameter
+                                : context.MainDiameter;
                             document.Regenerate();
+
+                            ValidateMainConnectionPlanAngle(
+                                junctionLeg,
+                                target,
+                                $"{caseLabel} planned Y connection",
+                                route.CaseNumber);
+                            double requiredFittingAngle =
+                                MeasureMainConnection3dAngle(junctionLeg, target);
+                            if (!IsSupportedYAngle(requiredFittingAngle))
+                                throw new InvalidOperationException(
+                                    $"{caseLabel} requires a {requiredFittingAngle:0.###} degree " +
+                                    "3D Y connector after applying the pipe slopes; this is outside " +
+                                    $"the allowed {MinimumYAngleDegrees:0.#}-" +
+                                    $"{MaximumYAngleDegrees:0.#} degree range.");
 
                             ElementId splitId = PlumbingUtils.BreakCurve(
                                 document,
@@ -1392,23 +2858,9 @@ internal static class DrainRoutingService
 
                             FamilyInstance? junction = null;
                             bool nativeRoutedJunction = false;
-                            if (route.CaseNumber == 5 && seed is null)
-                            {
-                                junction = TryCreateNativeRoutedJunction(
-                                    document,
-                                    target,
-                                    splitPipe,
-                                    junctionLeg,
-                                    junctionPoint,
-                                    preparedType.PartId,
-                                    out string nativeFailure);
-                                nativeRoutedJunction = junction is not null;
-                                if (!nativeRoutedJunction &&
-                                    !string.IsNullOrWhiteSpace(nativeFailure))
-                                    failures.Add(
-                                        $"{attemptLabel}, native routed Y: {nativeFailure}");
-                            }
-
+                            // Always use connector-driven placement here. Native
+                            // NewTeeFitting may pull the branch from exact 45-degree
+                            // plan geometry toward the family's nominal connector angle.
                             junction ??= PlaceRotateAndConnectJunction(
                                 document,
                                 preparedType.PartId,
@@ -1417,15 +2869,39 @@ internal static class DrainRoutingService
                                 splitPipe,
                                 junctionLeg,
                                 context.MainDiameter,
-                                context.BranchDiameter,
+                                fittingBranchDiameter,
+                                requiredFittingAngle,
                                 true);
                             document.Regenerate();
+                            ValidateConnectedJunction(junction, target, splitPipe, junctionLeg,
+                                preparedType.PartId, context.MainDiameter, fittingBranchDiameter);
 
-                            target.ChangeTypeId(context.TargetPipeType.Id);
-                            splitPipe.ChangeTypeId(context.TargetPipeType.Id);
+                            if (preparedType.NativeRouting)
+                            {
+                                target.ChangeTypeId(context.TargetPipeType.Id);
+                                splitPipe.ChangeTypeId(context.TargetPipeType.Id);
+                            }
                             if (seed is not null)
                                 seed.Pipe.ChangeTypeId(context.TargetPipeType.Id);
                             document.Regenerate();
+                            ValidateConnectedJunction(junction, target, splitPipe, junctionLeg,
+                                preparedType.PartId, context.MainDiameter, fittingBranchDiameter);
+                            double connectedPlanAngle = ValidateMainConnectionPlanAngle(
+                                junctionLeg,
+                                target,
+                                $"{caseLabel} connected Y",
+                                route.CaseNumber);
+                            ValidatePipeFallsIntoConnection(
+                                junctionLeg,
+                                junctionPoint,
+                                $"{caseLabel} final branch into Y");
+                            // Stage 1 already verifies the requested branch slope.
+                            // Some manufacturer socket families place their branch
+                            // connector a fraction off the theoretical Y axis. Revit
+                            // then adjusts the short final pipe by a few hundredths of
+                            // a percent when ConnectTo closes the joint. Connectivity
+                            // is authoritative here; do not roll back a fully connected
+                            // three-connector Y because of that fitting takeout offset.
                             foreach (ElementId typeId in allPreparedTypeIds)
                             {
                                 if (document.GetElement(typeId) is not null)
@@ -1452,7 +2928,9 @@ internal static class DrainRoutingService
                                 false,
                                 $"{caseLabel} created in two stages: the branch was committed first, " +
                                 "then the main was broken at its endpoint and Revit inserted the " +
-                                $"{preparedType.Label} Y using {sizeLabel}.",
+                                $"{preparedType.Label} Y using {sizeLabel} " +
+                                $"({(nativeRoutedJunction ? "three pipe connectors" : "manual placement")}); " +
+                                $"branch-to-main 45-degree view angle {connectedPlanAngle:0.###} degrees.",
                                 route with { WyePoint = junctionPoint },
                                 stage1Ids);
                         }
@@ -1556,7 +3034,10 @@ internal static class DrainRoutingService
         Document document,
         PipeType targetPipeType,
         double mainDiameter,
-        double branchDiameter)
+        double branchDiameter,
+        ElementId? selectedSymbolId,
+        IReadOnlyDictionary<long, double>? knownAngles,
+        double requestedFittingAngle)
     {
         RoutingPreferenceManager sourceManager = targetPipeType.RoutingPreferenceManager;
         int count = sourceManager.GetNumberOfRules(
@@ -1581,6 +3062,16 @@ internal static class DrainRoutingService
                 JunctionPartName(document, rule)));
         }
 
+        if (selectedSymbolId is not null && selectedSymbolId != ElementId.InvalidElementId)
+        {
+            if (document.GetElement(selectedSymbolId) is not FamilySymbol selected ||
+                selected.Category?.Id.CompatValue() != (long)BuiltInCategory.OST_PipeFitting)
+                throw new InvalidOperationException("The selected Y fitting type is no longer available.");
+            candidates.Clear();
+            candidates.Add(new JunctionRuleCandidate(-1, selected.Id,
+                $"{selected.FamilyName}: {selected.Name} [Id {selected.Id.CompatValue()}]"));
+        }
+
         if (candidates.Count == 0)
             throw new InvalidOperationException(
                 "The Target Pipe Type has no valid junction family in Routing Preferences.");
@@ -1590,60 +3081,236 @@ internal static class DrainRoutingService
                      .OrderByDescending(item => item.PartId == preferredPartId)
                      .ThenBy(item => item.RuleIndex))
         {
-            PipeType temporary = targetPipeType.Duplicate(
-                $"__FamilyMEP_Drain_{Guid.NewGuid():N}") as PipeType
-                ?? throw new InvalidOperationException(
-                    "Revit could not create a temporary routing Pipe Type.");
-            RoutingPreferenceManager manager = temporary.RoutingPreferenceManager;
-            for (int index = count - 1; index >= 0; index--)
-            {
-                if (index != candidate.RuleIndex)
-                    manager.RemoveRule(RoutingPreferenceRuleGroupType.Junctions, index);
-            }
-
             double fittingAngle = ResolveJunctionAngleDegrees(document, candidate.PartId);
-            prepared.Add(new PreparedJunctionType(
-                temporary.Id,
-                candidate.PartId,
-                $"{candidate.Label} (connector {fittingAngle:0.###} deg)",
-                fittingAngle));
+            if (double.IsNaN(fittingAngle) &&
+                knownAngles?.TryGetValue(candidate.PartId.CompatValue(), out double knownAngle) == true)
+                fittingAngle = knownAngle;
+            // The WPF catalog already verified the selected symbol and used its
+            // connector angle to build Stage 1. A second probe can fail or choose
+            // the wrong connector pair on differently authored families, so the
+            // selected symbol keeps the same verified angle throughout Stage 2.
+            if (selectedSymbolId is not null &&
+                candidate.PartId == selectedSymbolId &&
+                IsSupportedYAngle(requestedFittingAngle))
+                fittingAngle = requestedFittingAngle;
+            using var isolation = new SubTransaction(document);
+            isolation.Start();
+            try
+            {
+                PipeType temporary = targetPipeType.Duplicate(
+                    $"__FamilyMEP_Drain_{Guid.NewGuid():N}") as PipeType
+                    ?? throw new InvalidOperationException(
+                        "Revit could not create a temporary routing Pipe Type.");
+                RoutingPreferenceManager manager = temporary.RoutingPreferenceManager;
+                for (int index = count - 1; index >= 0; index--)
+                {
+                    if (index != candidate.RuleIndex)
+                        manager.RemoveRule(RoutingPreferenceRuleGroupType.Junctions, index);
+                }
+
+                if (candidate.RuleIndex == -1)
+                {
+                    var rule = new RoutingPreferenceRule(candidate.PartId, "Selected drain Y");
+                    rule.AddCriterion(new PrimarySizeCriterion(0.0, double.MaxValue));
+                    manager.AddRule(RoutingPreferenceRuleGroupType.Junctions, rule);
+                    manager.PreferredJunctionType = PreferredJunctionType.Tee;
+                }
+                ElementId temporaryId = temporary.Id;
+                if (isolation.Commit() != TransactionStatus.Committed)
+                    throw new InvalidOperationException("Revit rolled back the temporary Y routing rule.");
+                prepared.Add(new PreparedJunctionType(
+                    temporaryId, candidate.PartId,
+                    $"{candidate.Label} (connector {fittingAngle:0.###} deg)", fittingAngle));
+            }
+            catch (Exception exception) when (candidate.RuleIndex == -1)
+            {
+                if (isolation.GetStatus() == TransactionStatus.Started)
+                    isolation.RollBack();
+                // Some loaded Y families cannot belong to the Junctions group.
+                // Their explicit selection must still reach direct placement.
+                // The original pipe type is neither edited nor a cleanup target.
+                prepared.Add(new PreparedJunctionType(
+                    targetPipeType.Id, candidate.PartId,
+                    $"{candidate.Label} (connector {fittingAngle:0.###} deg; direct family placement; " +
+                    $"routing unavailable: {exception.Message})", fittingAngle, false));
+            }
         }
 
         IReadOnlyList<PreparedJunctionType> case01 = prepared
-            .Where(item => item.FittingAngleDegrees >= 35.0 && item.FittingAngleDegrees <= 55.0)
+            .Where(item => IsSupportedYAngle(item.FittingAngleDegrees))
             .ToList();
         if (case01.Count == 0)
             throw new InvalidOperationException(
-                "No junction family with a connector angle between 35 and 55 degrees is available for this drain case.");
+                "No verified three-connector Y is available. The fitting needs two collinear main connectors and one non-90-degree branch connector. Stage 1 pipes are retained.");
         return case01;
     }
+
+    private static DrainSettings ValidateSelectedYBeforeStage1(
+        Document document,
+        DrainSettings settings,
+        PipeType targetPipeType)
+    {
+        ElementId? selectedSymbolId = settings.JunctionSymbolId;
+        bool explicitSelection = selectedSymbolId is not null &&
+            selectedSymbolId != ElementId.InvalidElementId;
+        IReadOnlyList<ElementId> candidateIds;
+        if (explicitSelection)
+        {
+            candidateIds = [selectedSymbolId!];
+        }
+        else
+        {
+            RoutingPreferenceManager manager = targetPipeType.RoutingPreferenceManager;
+            int count = manager.GetNumberOfRules(
+                RoutingPreferenceRuleGroupType.Junctions);
+            candidateIds = Enumerable.Range(0, count)
+                .Select(index => manager.GetRule(
+                    RoutingPreferenceRuleGroupType.Junctions,
+                    index).MEPPartId)
+                .Where(id => id != ElementId.InvalidElementId)
+                .Distinct()
+                .ToList();
+        }
+
+        if (candidateIds.Count == 0)
+            throw new InvalidOperationException(
+                "The selected main Pipe Type has no Junction fitting rules to inspect.");
+
+        using var validation = new Transaction(
+            document,
+            "Measure drain Y connectors before creating branch");
+        validation.Start();
+        try
+        {
+            var measuredAngles = settings.JunctionAnglesBySymbolId is null
+                ? new Dictionary<long, double>()
+                : settings.JunctionAnglesBySymbolId.ToDictionary(
+                    pair => pair.Key,
+                    pair => pair.Value);
+            var validAngles = new List<double>();
+            var rejected = new List<string>();
+            foreach (ElementId candidateId in candidateIds)
+            {
+                if (document.GetElement(candidateId) is not FamilySymbol symbol ||
+                    symbol.Category?.Id.CompatValue() !=
+                    (long)BuiltInCategory.OST_PipeFitting)
+                {
+                    rejected.Add($"Element {candidateId.CompatValue()} is not a Pipe Fitting type.");
+                    continue;
+                }
+
+                string fittingName = $"{symbol.FamilyName}: {symbol.Name}";
+                try
+                {
+                    if (!symbol.IsActive)
+                    {
+                        symbol.Activate();
+                        document.Regenerate();
+                    }
+
+                    FamilyInstance? existing = ExistingJunctionInstance(document, symbol.Id);
+                    FamilyInstance? probe = existing is null
+                        ? CreateJunctionProbe(document, symbol)
+                        : null;
+                    document.Regenerate();
+                    IReadOnlyList<Connector> connectors = DrainSelection.GetConnectors(
+                        existing ?? probe!);
+                    if (connectors.Count != 3)
+                        throw new InvalidOperationException(
+                            $"has {connectors.Count} round piping connector(s); exactly 3 are required");
+
+                    (int first, int second) = MostOppositeConnectorPair(connectors);
+                    XYZ firstDirection = connectors[first].CoordinateSystem.BasisZ.Normalize();
+                    XYZ secondDirection = connectors[second].CoordinateSystem.BasisZ.Normalize();
+                    if (Math.Abs(firstDirection.DotProduct(secondDirection)) < 0.99)
+                        throw new InvalidOperationException(
+                            "does not have two parallel main-run connector axes");
+
+                    Connector branch = connectors
+                        .Where((_, index) => index != first && index != second)
+                        .Single();
+                    double branchAngle = Math.Min(
+                        AcuteDegrees(branch.CoordinateSystem.BasisZ, firstDirection),
+                        AcuteDegrees(branch.CoordinateSystem.BasisZ, secondDirection));
+                    if (!IsSupportedYAngle(branchAngle))
+                        throw new InvalidOperationException(
+                            $"has a {branchAngle:0.###} degree branch; drain Y fittings must be " +
+                            $"within {MinimumYAngleDegrees:0.#}-{MaximumYAngleDegrees:0.#} degrees");
+
+                    measuredAngles[candidateId.CompatValue()] = branchAngle;
+                    validAngles.Add(branchAngle);
+                }
+                catch (Exception exception)
+                {
+                    rejected.Add($"'{fittingName}' {exception.Message}");
+                }
+            }
+
+            if (validAngles.Count == 0)
+                throw new InvalidOperationException(
+                    "No usable Y fitting was found from the real connector geometry. " +
+                    string.Join(" | ", rejected.Take(6)));
+
+            return settings with
+            {
+                JunctionAngles = validAngles.Distinct().OrderBy(angle => angle).ToList(),
+                JunctionAnglesBySymbolId = measuredAngles
+            };
+        }
+        finally
+        {
+            if (validation.GetStatus() == TransactionStatus.Started)
+                validation.RollBack();
+        }
+    }
+
+    private static void ValidateMinimumMiddlePipeLength(
+        Pipe middlePipe,
+        double requiredLength)
+    {
+        if (requiredLength <= DrainGeometry.Mm(0.1))
+            return;
+        if (middlePipe.Location is not LocationCurve location)
+            throw new InvalidOperationException(
+                "Case 04 could not read the pipe between the two device-side 45 degree elbows.");
+        double actualLength = location.Curve.Length;
+        if (actualLength + DrainGeometry.Mm(1) < requiredLength)
+            throw new InvalidOperationException(
+                $"The pipe between the two device-side 45 degree elbows is only " +
+                $"{DrainGeometry.ToMm(actualLength):0.#} mm after fitting takeout; " +
+                $"at least {DrainGeometry.ToMm(requiredLength):0.#} mm is required. " +
+                "Trying a longer Case 04 layout.");
+    }
+
+    private static bool IsSupportedYAngle(double angleDegrees) =>
+        !double.IsNaN(angleDegrees) &&
+        angleDegrees >= MinimumYAngleDegrees - 1e-6 &&
+        angleDegrees <= MaximumYAngleDegrees + 1e-6;
 
     private static double ResolveJunctionAngleDegrees(
         Document document,
         ElementId symbolId)
     {
         if (document.GetElement(symbolId) is not FamilySymbol symbol)
-            return 45.0;
+            return double.NaN;
 
         FamilyInstance? probe = null;
         try
         {
-            if (!symbol.IsActive)
-            {
-                symbol.Activate();
-                document.Regenerate();
-            }
-
-            probe = document.Create.NewFamilyInstance(
-                XYZ.Zero,
-                symbol,
-                StructuralType.NonStructural);
+            FamilyInstance? existing = ExistingJunctionInstance(document, symbol.Id);
+            probe = existing is null
+                ? CreateJunctionProbe(document, symbol)
+                : null;
             document.Regenerate();
-            IReadOnlyList<Connector> connectors = DrainSelection.GetConnectors(probe);
-            if (connectors.Count < 3)
-                return 45.0;
+            IReadOnlyList<Connector> connectors = DrainSelection.GetConnectors(
+                existing ?? probe!);
+            if (connectors.Count != 3)
+                return double.NaN;
 
             (int first, int second) = MostOppositeConnectorPair(connectors);
+            if (Math.Abs(connectors[first].CoordinateSystem.BasisZ.Normalize().DotProduct(
+                    connectors[second].CoordinateSystem.BasisZ.Normalize())) < 0.99)
+                return double.NaN;
             Connector? branch = connectors
                 .Where((_, index) => index != first && index != second)
                 .OrderByDescending(item => item.Radius)
@@ -1651,7 +3318,7 @@ internal static class DrainRoutingService
             if (branch?.CoordinateSystem is null ||
                 connectors[first].CoordinateSystem is null ||
                 connectors[second].CoordinateSystem is null)
-                return 45.0;
+                return double.NaN;
 
             double firstAngle = AcuteDegrees(
                 branch.CoordinateSystem.BasisZ,
@@ -1663,11 +3330,11 @@ internal static class DrainRoutingService
             // Preserve a measured 90-degree Tee as 90. Returning the former
             // 45-degree fallback here incorrectly classified Tee rules as Y
             // candidates and made Revit stop on the Tee before reaching the Y.
-            return measured is > 1.0 and <= 90.001 ? measured : 45.0;
+            return measured is > 1.0 and <= 90.001 ? measured : double.NaN;
         }
         catch
         {
-            return 45.0;
+            return double.NaN;
         }
         finally
         {
@@ -1676,12 +3343,129 @@ internal static class DrainRoutingService
         }
     }
 
+    private static FamilyInstance? ExistingJunctionInstance(
+        Document document,
+        ElementId symbolId)
+    {
+        return new FilteredElementCollector(document)
+            .OfClass(typeof(FamilyInstance))
+            .OfCategory(BuiltInCategory.OST_PipeFitting)
+            .Cast<FamilyInstance>()
+            .FirstOrDefault(instance =>
+                instance.Symbol.Id == symbolId &&
+                DrainSelection.GetConnectors(instance).Count > 0);
+    }
+
+    private static FamilyInstance CreateJunctionProbe(
+        Document document,
+        FamilySymbol symbol)
+    {
+        if (!symbol.IsActive)
+        {
+            symbol.Activate();
+            document.Regenerate();
+        }
+
+        Exception? pointPlacementFailure = null;
+        try
+        {
+            return document.Create.NewFamilyInstance(
+                XYZ.Zero,
+                symbol,
+                StructuralType.NonStructural);
+        }
+        catch (Exception exception)
+        {
+            pointPlacementFailure = exception;
+        }
+
+        Level? level = new FilteredElementCollector(document)
+            .OfClass(typeof(Level))
+            .Cast<Level>()
+            .OrderBy(item => Math.Abs(item.Elevation))
+            .FirstOrDefault();
+        if (level is not null)
+        {
+            try
+            {
+                return document.Create.NewFamilyInstance(
+                    new XYZ(0, 0, level.Elevation),
+                    symbol,
+                    level,
+                    StructuralType.NonStructural);
+            }
+            catch (Exception levelPlacementFailure)
+            {
+                throw new InvalidOperationException(
+                    $"Could not inspect '{symbol.FamilyName}: {symbol.Name}'. " +
+                    $"Family placement type: {symbol.Family.FamilyPlacementType}. " +
+                    $"Point placement: {pointPlacementFailure.Message} " +
+                    $"Level placement: {levelPlacementFailure.Message}",
+                    levelPlacementFailure);
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Could not inspect '{symbol.FamilyName}: {symbol.Name}'. " +
+            $"Family placement type: {symbol.Family.FamilyPlacementType}. " +
+            pointPlacementFailure?.Message,
+            pointPlacementFailure);
+    }
+
+    private static double MeasureJunctionDirections(
+        IReadOnlyList<XYZ> directions)
+    {
+        if (directions.Count != 3 ||
+            directions.Any(direction => direction.GetLength() <= 1e-9))
+            return double.NaN;
+
+        int first = 0;
+        int second = 1;
+        // Connector arrows are not authored consistently across manufacturers:
+        // the two run connectors may point in opposite directions or the same
+        // direction. Their axes are still the most parallel pair, so compare the
+        // absolute dot product instead of requiring a particular arrow direction.
+        double greatestParallelism = double.MinValue;
+        for (int i = 0; i < directions.Count - 1; i++)
+        {
+            for (int j = i + 1; j < directions.Count; j++)
+            {
+                double dot = directions[i].Normalize().DotProduct(
+                    directions[j].Normalize());
+                double parallelism = Math.Abs(dot);
+                if (parallelism > greatestParallelism)
+                {
+                    greatestParallelism = parallelism;
+                    first = i;
+                    second = j;
+                }
+            }
+        }
+        if (greatestParallelism < 0.99)
+            return double.NaN;
+
+        int branchIndex = Enumerable.Range(0, directions.Count)
+            .Single(index => index != first && index != second);
+        double firstAngle = AcuteDegrees(
+            directions[branchIndex],
+            directions[first]);
+        double secondAngle = AcuteDegrees(
+            directions[branchIndex],
+            directions[second]);
+        double measured = Math.Min(firstAngle, secondAngle);
+        return measured is > 1.0 and <= 90.001
+            ? measured
+            : double.NaN;
+    }
+
     private static (int First, int Second) MostOppositeConnectorPair(
         IReadOnlyList<Connector> connectors)
     {
         int first = 0;
         int second = 1;
-        double smallestDot = double.MaxValue;
+        // Treat connector axes as unoriented lines. Family authors may reverse
+        // either connector arrow without changing the actual Y geometry.
+        double greatestParallelism = double.MinValue;
         for (int i = 0; i < connectors.Count - 1; i++)
         {
             XYZ? a = connectors[i].CoordinateSystem?.BasisZ;
@@ -1690,10 +3474,10 @@ internal static class DrainRoutingService
             {
                 XYZ? b = connectors[j].CoordinateSystem?.BasisZ;
                 if (b is null) continue;
-                double dot = a.Normalize().DotProduct(b.Normalize());
-                if (dot < smallestDot)
+                double parallelism = Math.Abs(a.Normalize().DotProduct(b.Normalize()));
+                if (parallelism > greatestParallelism)
                 {
-                    smallestDot = dot;
+                    greatestParallelism = parallelism;
                     first = i;
                     second = j;
                 }
@@ -1860,6 +3644,7 @@ internal static class DrainRoutingService
         Pipe branch,
         double mainDiameter,
         double branchDiameter,
+        double desiredFittingAngleDegrees,
         bool connectBranch)
     {
         if (document.GetElement(symbolId) is not FamilySymbol symbol)
@@ -1877,15 +3662,27 @@ internal static class DrainRoutingService
             StructuralType.NonStructural);
         document.Regenerate();
 
+        ConfigureFlexibleJunctionAngle(
+            document,
+            junction,
+            desiredFittingAngleDegrees);
+
         ApplyJunctionConnectorSizes(
             document,
             junction,
             mainDiameter,
             branchDiameter);
+        ConfigureFlexibleJunctionAngle(
+            document,
+            junction,
+            desiredFittingAngleDegrees);
 
         JunctionConnectors initial = JunctionConnectorsOf(junction);
-        XYZ sourceRun = initial.RunA.CoordinateSystem.BasisZ.Normalize();
-        XYZ sourceBranch = initial.Branch.CoordinateSystem.BasisZ.Normalize();
+        XYZ initialIntersection = JunctionIntersectionFromConnectorAxes(initial);
+        // Use the physical ray from the connector-axis intersection to each
+        // connector. BasisZ arrow signs vary between otherwise valid Y families.
+        XYZ sourceRun = ConnectorRay(initial.RunA, initialIntersection);
+        XYZ sourceBranch = ConnectorRay(initial.Branch, initialIntersection);
         XYZ mainAxis = PipeDirectionAwayFrom(target, junctionPoint).Normalize();
         XYZ branchAxis = PipeDirectionAwayFrom(branch, junctionPoint).Normalize();
 
@@ -1904,7 +3701,8 @@ internal static class DrainRoutingService
         document.Regenerate();
 
         JunctionConnectors afterRun = JunctionConnectorsOf(junction);
-        XYZ currentBranch = afterRun.Branch.CoordinateSystem.BasisZ.Normalize();
+        XYZ afterRunIntersection = JunctionIntersectionFromConnectorAxes(afterRun);
+        XYZ currentBranch = ConnectorRay(afterRun.Branch, afterRunIntersection);
         XYZ currentPerpendicular = PerpendicularComponent(currentBranch, mainAxis);
         XYZ desiredPerpendicular = PerpendicularComponent(branchAxis, mainAxis);
         double roll = SignedAngle(
@@ -1922,11 +3720,7 @@ internal static class DrainRoutingService
         }
 
         JunctionConnectors oriented = JunctionConnectorsOf(junction);
-        XYZ fittingIntersection = ClosestAxisIntersection(
-            oriented.RunA.Origin,
-            oriented.RunA.CoordinateSystem.BasisZ,
-            oriented.Branch.Origin,
-            oriented.Branch.CoordinateSystem.BasisZ);
+        XYZ fittingIntersection = JunctionIntersectionFromConnectorAxes(oriented);
         ElementTransformUtils.MoveElement(
             document,
             junction.Id,
@@ -1936,8 +3730,8 @@ internal static class DrainRoutingService
         JunctionConnectors fitted = JunctionConnectorsOf(junction);
         XYZ targetDirection = PipeDirectionAwayFrom(target, junctionPoint).Normalize();
         Connector targetFitting =
-            fitted.RunA.CoordinateSystem.BasisZ.Normalize().DotProduct(targetDirection) >=
-            fitted.RunB.CoordinateSystem.BasisZ.Normalize().DotProduct(targetDirection)
+            (fitted.RunA.Origin - junctionPoint).Normalize().DotProduct(targetDirection) >=
+            (fitted.RunB.Origin - junctionPoint).Normalize().DotProduct(targetDirection)
                 ? fitted.RunA
                 : fitted.RunB;
         Connector splitFitting = targetFitting.Id == fitted.RunA.Id
@@ -1955,7 +3749,202 @@ internal static class DrainRoutingService
         if (connectBranch)
             ConnectCoincident(document, branch, fitted.Branch);
         document.Regenerate();
+
+        // A few socket families expose the Y angle as a writable instance
+        // parameter and initialize every new instance at 90 degrees. Confirm
+        // the connected fitting did not flex back to that default.
+        ConfigureFlexibleJunctionAngle(
+            document,
+            junction,
+            desiredFittingAngleDegrees);
+        double connectedAngle = MeasureJunctionConnectorAngle(
+            DrainSelection.GetConnectors(junction));
+        if (double.IsNaN(connectedAngle) ||
+            Math.Abs(connectedAngle - desiredFittingAngleDegrees) >
+            PipePlanAngleToleranceDegrees)
+            throw new InvalidOperationException(
+                $"The placed fitting flexed to {connectedAngle:0.###} degrees instead of the selected " +
+                $"Y angle {desiredFittingAngleDegrees:0.###} degrees.");
         return junction;
+    }
+
+    private static void ConfigureFlexibleJunctionAngle(
+        Document document,
+        FamilyInstance junction,
+        double desiredAngleDegrees)
+    {
+        if (double.IsNaN(desiredAngleDegrees))
+            return;
+
+        double currentAngle = MeasureJunctionConnectorAngle(
+            DrainSelection.GetConnectors(junction));
+        if (!double.IsNaN(currentAngle) &&
+            Math.Abs(currentAngle - desiredAngleDegrees) <=
+            PipePlanAngleToleranceDegrees)
+            return;
+
+        IReadOnlyList<string> angleParameterNames = junction.Parameters
+            .Cast<Parameter>()
+            .Where(parameter =>
+                parameter.StorageType == StorageType.Double &&
+                !parameter.IsReadOnly &&
+                parameter.Definition.GetDataType().Equals(SpecTypeId.Angle))
+            .Select(parameter => parameter.Definition.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(FlexibleAngleParameterPriority)
+            .ToList();
+
+        double desiredRadians = desiredAngleDegrees * Math.PI / 180.0;
+        var attempts = new List<string>();
+        foreach (string parameterName in angleParameterNames)
+        {
+            using var probe = new SubTransaction(document);
+            probe.Start();
+            try
+            {
+                Parameter? angleParameter = junction
+                    .GetParameters(parameterName)
+                    .FirstOrDefault(parameter =>
+                        parameter.StorageType == StorageType.Double &&
+                        !parameter.IsReadOnly);
+                if (angleParameter is null || !angleParameter.Set(desiredRadians))
+                {
+                    probe.RollBack();
+                    continue;
+                }
+
+                document.Regenerate();
+                double measured = MeasureJunctionConnectorAngle(
+                    DrainSelection.GetConnectors(junction));
+                attempts.Add($"{parameterName} -> {measured:0.###} deg");
+                if (!double.IsNaN(measured) &&
+                    Math.Abs(measured - desiredAngleDegrees) <=
+                    PipePlanAngleToleranceDegrees)
+                {
+                    if (probe.Commit() != TransactionStatus.Committed)
+                        throw new InvalidOperationException(
+                            $"Revit rolled back angle parameter '{parameterName}'.");
+                    return;
+                }
+
+                probe.RollBack();
+            }
+            catch (Exception exception)
+            {
+                attempts.Add($"{parameterName}: {exception.Message}");
+                if (probe.GetStatus() == TransactionStatus.Started)
+                    probe.RollBack();
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"A new '{junction.Symbol.FamilyName}: {junction.Symbol.Name}' instance resolved at " +
+            $"{currentAngle:0.###} degrees. Revit could not set its flexible instance angle to " +
+            $"{desiredAngleDegrees:0.###} degrees. " +
+            (attempts.Count == 0
+                ? "No writable Angle instance parameter was found."
+                : string.Join(" | ", attempts.Take(6))));
+    }
+
+    private static int FlexibleAngleParameterPriority(string parameterName)
+    {
+        bool main = parameterName.Contains("main", StringComparison.OrdinalIgnoreCase);
+        bool rotate = parameterName.Contains("rotate", StringComparison.OrdinalIgnoreCase);
+        bool angle = parameterName.Contains("angle", StringComparison.OrdinalIgnoreCase);
+        if (main && rotate) return 0;
+        if (main && angle) return 1;
+        if (angle) return 2;
+        if (rotate) return 3;
+        return 4;
+    }
+
+    private static void ValidateConnectedJunction(
+        FamilyInstance junction, Pipe main, Pipe split, Pipe branch,
+        ElementId expectedSymbolId, double mainDiameter, double branchDiameter)
+    {
+        if (junction.Symbol.Id != expectedSymbolId)
+            throw new InvalidOperationException("Revit substituted a different fitting type for the selected Y.");
+        IReadOnlyList<Connector> connectors = DrainSelection.GetConnectors(junction);
+        if (connectors.Count != 3)
+            throw new InvalidOperationException("The selected Y must have exactly three round piping connectors.");
+        double fittingAngle = MeasureJunctionConnectorAngle(connectors);
+        if (!IsSupportedYAngle(fittingAngle))
+            throw new InvalidOperationException(
+                $"The connected Y resolved at {fittingAngle:0.###} degrees. " +
+                $"Drain connections require {TargetYAngleDegrees:0.#} +/- " +
+                $"{YAngleToleranceDegrees:0.#} degrees.");
+        var used = new HashSet<int>();
+        foreach (Pipe pipe in new[] { main, split, branch })
+        {
+            Connector? fittingEnd = connectors.FirstOrDefault(end =>
+                DrainSelection.GetConnectors(pipe).Any(pipeEnd =>
+                    pipeEnd.IsConnectedTo(end) &&
+                    pipeEnd.Origin.DistanceTo(end.Origin) <= DrainGeometry.Mm(1)));
+            double required = pipe.Id == branch.Id ? branchDiameter : mainDiameter;
+            if (fittingEnd is null || !used.Add(fittingEnd.Id) ||
+                Math.Abs(fittingEnd.Radius * 2 - required) > DrainGeometry.Mm(0.5))
+                throw new InvalidOperationException(
+                    $"Y connection to pipe {pipe.Id.CompatValue()} is missing or has the wrong diameter (required DN{DrainGeometry.ToMm(required):0.#}).");
+        }
+        // Connector ownership, diameter, and the measured connector angle are
+        // authoritative. Family parameter names vary between manufacturers.
+    }
+
+    private static double ValidateMainConnectionPlanAngle(
+        Pipe branch,
+        Pipe main,
+        string label,
+        int caseNumber)
+    {
+        if (caseNumber == 3)
+        {
+            double verticalPlaneAngle = MeasureMainConnection3dAngle(
+                branch,
+                main);
+            if (Math.Abs(verticalPlaneAngle - TargetYAngleDegrees) >
+                PipePlanAngleToleranceDegrees)
+                throw new InvalidOperationException(
+                    $"{label}: branch-to-main vertical-plane angle is " +
+                    $"{verticalPlaneAngle:0.###} degrees. It must remain " +
+                    $"{TargetYAngleDegrees:0.##} degrees (+/- " +
+                    $"{PipePlanAngleToleranceDegrees:0.##}).");
+            return verticalPlaneAngle;
+        }
+
+        XYZ branchAxis = PipeAxis(branch);
+        XYZ mainAxis = PipeAxis(main);
+        double branchPlanLength = Math.Sqrt(
+            branchAxis.X * branchAxis.X + branchAxis.Y * branchAxis.Y);
+        double mainPlanLength = Math.Sqrt(
+            mainAxis.X * mainAxis.X + mainAxis.Y * mainAxis.Y);
+        if (branchPlanLength <= 1e-9 || mainPlanLength <= 1e-9)
+            throw new InvalidOperationException(
+                $"{label}: the branch or main has no usable plan direction.");
+
+        double cosine = Math.Abs(
+            (branchAxis.X * mainAxis.X + branchAxis.Y * mainAxis.Y) /
+            (branchPlanLength * mainPlanLength));
+        cosine = Math.Max(-1.0, Math.Min(1.0, cosine));
+        double angle = Math.Acos(cosine) * 180.0 / Math.PI;
+        if (Math.Abs(angle - TargetYAngleDegrees) >
+            PipePlanAngleToleranceDegrees)
+            throw new InvalidOperationException(
+                $"{label}: branch-to-main plan angle is {angle:0.###} degrees. " +
+                $"It must remain {TargetYAngleDegrees:0.##} degrees (+/- " +
+                $"{PipePlanAngleToleranceDegrees:0.##}); the route was rejected " +
+                "instead of allowing Revit to skew the pipe.");
+        return angle;
+    }
+
+    private static double MeasureMainConnection3dAngle(
+        Pipe branch,
+        Pipe main)
+    {
+        XYZ branchAxis = PipeAxis(branch);
+        XYZ mainAxis = PipeAxis(main);
+        double cosine = Math.Abs(branchAxis.DotProduct(mainAxis));
+        cosine = Math.Max(-1.0, Math.Min(1.0, cosine));
+        return Math.Acos(cosine) * 180.0 / Math.PI;
     }
 
     private static void ApplyJunctionConnectorSizes(
@@ -2008,9 +3997,12 @@ internal static class DrainRoutingService
     private static JunctionConnectors JunctionConnectorsOf(FamilyInstance junction)
     {
         IReadOnlyList<Connector> connectors = DrainSelection.GetConnectors(junction);
-        if (connectors.Count < 3)
+        if (connectors.Count != 3)
             throw new InvalidOperationException(
-                "The routed Y family has fewer than three piping connectors.");
+                $"The routed Y family has {connectors.Count} round piping connectors; exactly three are required.");
+        XYZ center = junction.Location is LocationPoint locationPoint
+            ? locationPoint.Point
+            : junction.GetTransform().Origin;
         (int first, int second) = MostOppositeConnectorPair(connectors);
         Connector branch = connectors
             .Where((_, index) => index != first && index != second)
@@ -2018,14 +4010,67 @@ internal static class DrainRoutingService
             .FirstOrDefault()
             ?? throw new InvalidOperationException(
                 "The branch connector of the routed Y family could not be identified.");
-        return new JunctionConnectors(connectors[first], connectors[second], branch);
+        return new JunctionConnectors(connectors[first], connectors[second], branch, center);
+    }
+
+    private static XYZ RunDirectionFromConnectorOrigins(JunctionConnectors connectors)
+    {
+        XYZ direction = connectors.RunA.Origin - connectors.RunB.Origin;
+        if (direction.GetLength() <= 1e-9)
+            return connectors.RunA.CoordinateSystem.BasisZ.Normalize();
+        return direction.Normalize();
+    }
+
+    private static XYZ JunctionIntersectionFromConnectorAxes(
+        JunctionConnectors connectors)
+    {
+        // Axis intersection does not depend on the sign of BasisZ.
+        XYZ runDirection = connectors.RunA.CoordinateSystem.BasisZ.Normalize();
+        XYZ branchDirection = connectors.Branch.CoordinateSystem.BasisZ.Normalize();
+        return ClosestAxisIntersection(
+            connectors.RunA.Origin,
+            runDirection,
+            connectors.Branch.Origin,
+            branchDirection);
+    }
+
+    private static XYZ ConnectorRay(Connector connector, XYZ axisIntersection)
+    {
+        // Pipes connect along BasisZ, not necessarily along the vector from the
+        // family insertion point to the connector origin. Socket families can
+        // have a small eccentric origin offset. Use the real connector axis and
+        // use its location relative to the common axis intersection only to
+        // choose the outward sign.
+        XYZ axis = connector.CoordinateSystem.BasisZ.Normalize();
+        XYZ radial = connector.Origin - axisIntersection;
+        if (radial.GetLength() > 1e-8 && axis.DotProduct(radial) < 0.0)
+            axis = -axis;
+        return axis;
+    }
+
+    private static XYZ OutwardConnectorDirection(Connector connector, XYZ center)
+    {
+        XYZ direction = connector.CoordinateSystem.BasisZ.Normalize();
+        XYZ radial = connector.Origin - center;
+        if (radial.GetLength() > 1e-9 && direction.DotProduct(radial) < 0)
+            direction = -direction;
+        return direction;
+    }
+
+    private static XYZ BranchDirectionFromConnectorOrigins(
+        JunctionConnectors connectors)
+    {
+        XYZ direction = connectors.Branch.Origin - connectors.Center;
+        if (direction.GetLength() <= 1e-9)
+            return connectors.Branch.CoordinateSystem.BasisZ.Normalize();
+        return direction.Normalize();
     }
 
     private static XYZ PipeDirectionAwayFrom(Pipe pipe, XYZ junctionPoint)
     {
         if (pipe.Location is not LocationCurve location)
             throw new InvalidOperationException(
-                $"Pipe {pipe.Id.Value} has no usable centerline.");
+                $"Pipe {pipe.Id.CompatValue()} has no usable centerline.");
         XYZ start = location.Curve.GetEndPoint(0);
         XYZ end = location.Curve.GetEndPoint(1);
         return start.DistanceTo(junctionPoint) <= end.DistanceTo(junctionPoint)
@@ -2105,16 +4150,34 @@ internal static class DrainRoutingService
     {
         if (pipe.Location is not LocationCurve location)
             throw new InvalidOperationException(
-                $"Pipe {pipe.Id.Value} has no usable centerline.");
+                $"Pipe {pipe.Id.CompatValue()} has no usable centerline.");
         XYZ start = location.Curve.GetEndPoint(0);
         XYZ end = location.Curve.GetEndPoint(1);
+        XYZ originalAxis = end - start;
+        double minimumRemainingLength = DrainGeometry.Mm(2);
         if (start.DistanceTo(oldPoint) <= DrainGeometry.Mm(3))
+        {
+            XYZ remaining = end - newPoint;
+            if (remaining.GetLength() < minimumRemainingLength ||
+                remaining.DotProduct(originalAxis) <= 0.0)
+                throw new InvalidOperationException(
+                    $"Pipe {pipe.Id.CompatValue()} is shorter than this fitting's takeout; " +
+                    "moving its start would reverse the pipe.");
             location.Curve = Line.CreateBound(newPoint, end);
+        }
         else if (end.DistanceTo(oldPoint) <= DrainGeometry.Mm(3))
+        {
+            XYZ remaining = newPoint - start;
+            if (remaining.GetLength() < minimumRemainingLength ||
+                remaining.DotProduct(originalAxis) <= 0.0)
+                throw new InvalidOperationException(
+                    $"Pipe {pipe.Id.CompatValue()} is shorter than this fitting's takeout; " +
+                    "moving its end would reverse the pipe.");
             location.Curve = Line.CreateBound(start, newPoint);
+        }
         else
             throw new InvalidOperationException(
-                $"Pipe {pipe.Id.Value} has no endpoint at the Y junction center.");
+                $"Pipe {pipe.Id.CompatValue()} has no endpoint at the Y junction center.");
     }
 
     private static void ConnectCoincident(
@@ -2130,7 +4193,7 @@ internal static class DrainRoutingService
         document.Regenerate();
         if (!pipeConnector.IsConnected || !fittingConnector.IsConnected)
             throw new InvalidOperationException(
-                $"Revit did not connect pipe {pipe.Id.Value} to the placed Y family.");
+                $"Revit did not connect pipe {pipe.Id.CompatValue()} to the placed Y family.");
     }
 
     private static Pipe CreatePipe(Document document, Context context, XYZ start, XYZ end)
@@ -2161,11 +4224,42 @@ internal static class DrainRoutingService
         return pipe;
     }
 
+    private static Pipe RequirePipe(
+        Document document,
+        ElementId pipeId,
+        string label)
+    {
+        return document.GetElement(pipeId) as Pipe
+            ?? throw new InvalidOperationException(
+                $"{label} is no longer available after Revit regenerated the model.");
+    }
+
     private static void SetDiameter(Pipe pipe, double diameterValue)
     {
         Parameter? diameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM);
         if (diameter is { IsReadOnly: false })
             diameter.Set(diameterValue);
+    }
+
+    private static void ValidateRequestedSlope(
+        Pipe pipe,
+        double requestedSlopePercent,
+        string label,
+        double tolerancePercentagePoints = 0.005)
+    {
+        if (pipe.Location is not LocationCurve location)
+            throw new InvalidOperationException($"{label} has no readable centerline.");
+        XYZ start = location.Curve.GetEndPoint(0);
+        XYZ end = location.Curve.GetEndPoint(1);
+        double planLength = PlanDistance(start, end);
+        if (planLength <= DrainGeometry.Mm(10))
+            throw new InvalidOperationException($"{label} is too short to verify its slope.");
+        double actualSlope = Math.Abs(end.Z - start.Z) / planLength * 100.0;
+        if (Math.Abs(actualSlope - Math.Abs(requestedSlopePercent)) >
+            tolerancePercentagePoints)
+            throw new InvalidOperationException(
+                $"{label} resolved at {actualSlope:0.####}% instead of the requested " +
+                $"{Math.Abs(requestedSlopePercent):0.####}%; this fitting candidate was rejected.");
     }
 
     private static void ConnectSource(
@@ -2178,28 +4272,164 @@ internal static class DrainRoutingService
         document.Regenerate();
     }
 
-    private static FamilyInstance? ConnectCase04Source(
+    private static SourceConnection ConnectCase04Source(
         Document document,
+        Context context,
         Connector source,
         Pipe stub,
         DrainRoute route)
     {
+        ElementId sourceId = source.Owner.Id;
+        ElementId stubId = stub.Id;
+        ElementId targetPipeTypeId = context.TargetPipeType.Id;
         Connector pipeConnector = DrainSelection.ConnectorNear(
             stub,
             route.DrainOrigin,
             true);
+        double sourceDiameter = source.Radius * 2.0;
+        double branchDiameter = pipeConnector.Radius * 2.0;
+        if (stub.Location is not LocationCurve location)
+            throw new InvalidOperationException(
+                "Case 04 could not read the device-side pipe for its source connection.");
+        XYZ first = location.Curve.GetEndPoint(0);
+        XYZ second = location.Curve.GetEndPoint(1);
+        XYZ farEnd = first.DistanceTo(route.DrainOrigin) <=
+                     second.DistanceTo(route.DrainOrigin)
+            ? second
+            : first;
         if (Math.Abs(source.Radius - pipeConnector.Radius) <= DrainGeometry.Mm(0.25))
         {
             source.ConnectTo(pipeConnector);
+            // Revit can pull the pipe laterally when the fixture connector has
+            // a family-instance offset. Restore the requested vertical drop for
+            // the equal-DN path as well as for the reducer path below.
+            location.Curve = Line.CreateBound(route.DrainOrigin, farEnd);
             document.Regenerate();
-            return null;
+            stub = RequirePipe(document, stubId, "Case 04 device stub");
+            ValidateVerticalDeviceStub(stub, route.DrainOrigin);
+            return new SourceConnection(null, null);
         }
 
-        FamilyInstance transition = document.Create.NewTransitionFitting(
-            source,
-            pipeConnector);
+        double availableLength = route.DrainOrigin.DistanceTo(farEnd);
+        double minimumPiece = DrainGeometry.Mm(25);
+        double visibleOpenGap = DrainGeometry.Mm(25);
+        double desiredAdapterLength = Math.Max(
+            DrainGeometry.Mm(100),
+            Math.Max(sourceDiameter, branchDiameter) * 1.5);
+        double adapterLength = Math.Min(
+            desiredAdapterLength,
+            availableLength - minimumPiece - visibleOpenGap);
+        if (adapterLength < minimumPiece)
+            throw new InvalidOperationException(
+                "Case 04/06 needs at least 75 mm of straight drop below the device " +
+                "to change from the device DN to the main DN and preserve a visible open gap when no reducer is available.");
+
+        XYZ transitionPoint = route.DrainOrigin +
+            (farEnd - route.DrainOrigin).Normalize() * adapterLength;
+        MovePipeEnd(stub, route.DrainOrigin, transitionPoint);
         document.Regenerate();
-        return transition;
+        stub = RequirePipe(document, stubId, "Case 04 main-DN device stub");
+        Pipe adapter = CreatePipe(
+            document,
+            context,
+            targetPipeTypeId,
+            sourceDiameter,
+            route.DrainOrigin,
+            transitionPoint);
+        ElementId adapterId = adapter.Id;
+        document.Regenerate();
+
+        adapter = RequirePipe(document, adapterId, "Case 04 device-DN adapter");
+        Connector currentSource = DrainSelection.ChooseSourceConnector(
+            document.GetElement(sourceId)
+                ?? throw new InvalidOperationException(
+                    "The source drain disappeared before its adapter was connected."));
+        currentSource.ConnectTo(DrainSelection.ConnectorNear(
+            adapter,
+            route.DrainOrigin,
+            true));
+        document.Regenerate();
+        adapter = RequirePipe(document, adapterId, "Case 04 device-DN adapter");
+        // Reassert the requested vertical centerline after connecting to the
+        // fixture. Some connector definitions apply a small instance offset.
+        // Case 04 must keep the device drop vertical in plan.
+        if (adapter.Location is not LocationCurve adapterLocation)
+            throw new InvalidOperationException(
+                "Case 04 could not read the device-DN adapter centerline.");
+        adapterLocation.Curve = Line.CreateBound(
+            route.DrainOrigin,
+            transitionPoint);
+        document.Regenerate();
+        adapter = RequirePipe(document, adapterId, "Case 04 device-DN adapter");
+        stub = RequirePipe(document, stubId, "Case 04 main-DN device stub");
+        ValidateVerticalDeviceStub(adapter, route.DrainOrigin);
+        using var reductionAttempt = new SubTransaction(document);
+        reductionAttempt.Start();
+        try
+        {
+            FamilyInstance transition = document.Create.NewTransitionFitting(
+                DrainSelection.ConnectorNear(adapter, transitionPoint, true),
+                DrainSelection.ConnectorNear(stub, transitionPoint, true));
+            ElementId transitionId = transition.Id;
+            document.Regenerate();
+            adapter = RequirePipe(document, adapterId, "Case 04 device-DN adapter");
+            stub = RequirePipe(document, stubId, "Case 04 main-DN device stub");
+            // Reject eccentric or mis-oriented reducers that pull either side
+            // of the device drop away from the same vertical plan point. The
+            // catch below removes only that reducer and leaves a clean open DN
+            // break instead of accepting the visibly slanted drop.
+            ValidateVerticalDeviceStub(adapter, route.DrainOrigin);
+            ValidateVerticalDeviceStub(stub, transitionPoint);
+            ValidateVerticalPipeAlignment(adapter, stub);
+            if (reductionAttempt.Commit() != TransactionStatus.Committed)
+                throw new InvalidOperationException(
+                    "Revit rolled back the device-side reducer.");
+            adapter = RequirePipe(document, adapterId, "Case 04 device-DN adapter");
+            FamilyInstance committedTransition =
+                document.GetElement(transitionId) as FamilyInstance
+                ?? throw new InvalidOperationException(
+                    "The device-side reducer disappeared after it was committed.");
+            return new SourceConnection(adapter, committedTransition);
+        }
+        catch (Exception exception)
+        {
+            if (reductionAttempt.GetStatus() == TransactionStatus.Started)
+                reductionAttempt.RollBack();
+            document.Regenerate();
+
+            // Keep the adapter connected to the device and the main-sized stub
+            // connected to the completed route. Move the main-sized pipe end
+            // downward to leave a visible gap. Coincident open connectors looked
+            // connected in plan and hid the missing reducer from the user.
+            XYZ dropDirection = (farEnd - route.DrainOrigin).Normalize();
+            XYZ openMainEnd = transitionPoint + dropDirection * visibleOpenGap;
+            adapter = RequirePipe(document, adapterId, "Case 04 device-DN adapter");
+            stub = RequirePipe(document, stubId, "Case 04 main-DN device stub");
+            MovePipeEnd(stub, transitionPoint, openMainEnd);
+            document.Regenerate();
+            stub = RequirePipe(document, stubId, "Case 04 main-DN device stub");
+            adapter = RequirePipe(document, adapterId, "Case 04 device-DN adapter");
+            ValidateVerticalDeviceStub(stub, openMainEnd);
+            return new SourceConnection(
+                adapter,
+                null,
+                true,
+                (transitionPoint + openMainEnd) * 0.5,
+                $"No reducer could be created between DN{DrainGeometry.ToMm(sourceDiameter):0.#} " +
+                $"and DN{DrainGeometry.ToMm(branchDiameter):0.#}. " +
+                $"A {DrainGeometry.ToMm(visibleOpenGap):0.#} mm open gap was left at the device drop: " +
+                exception.Message);
+        }
+    }
+
+    private static void AddSourceConnectionIds(
+        List<ElementId> ids,
+        SourceConnection connection)
+    {
+        if (connection.Adapter is not null)
+            ids.Add(connection.Adapter.Id);
+        if (connection.Transition is not null)
+            ids.Add(connection.Transition.Id);
     }
 
     private static void ConfigureFailureHandling(
@@ -2222,6 +4452,25 @@ internal static class DrainRoutingService
         XYZ start = location.Curve.GetEndPoint(0);
         XYZ end = location.Curve.GetEndPoint(1);
         XYZ endpointPreference = preferredPoint ?? context.SourceConnector.Origin;
+        IntersectionResult projection = location.Curve.Project(endpointPreference)
+            ?? throw new InvalidOperationException(
+                "The picked point could not be projected to the selected main.");
+        XYZ pickedPoint = projection.XYZPoint;
+        double interiorClearance = Math.Max(
+            DrainGeometry.Mm(25),
+            context.MainDiameter);
+
+        // Respect an intentional interior click. Drainage must continue from
+        // the new branch connection toward the lower end of the main. Keeping
+        // the longer side here can retain the uphill half and make Cases 04/05
+        // rise after their endpoint elbow.
+        if (pickedPoint.DistanceTo(start) > interiorClearance &&
+            pickedPoint.DistanceTo(end) > interiorClearance)
+        {
+            XYZ inside = RetainedMainEndpoint(start, end, pickedPoint);
+            return (inside, pickedPoint);
+        }
+
         Connector? openEnd = DrainSelection.GetOpenRoundConnectors(context.Target)
             .Where(connector =>
                 connector.Origin.DistanceTo(start) <= DrainGeometry.Mm(3) ||
@@ -2232,9 +4481,26 @@ internal static class DrainRoutingService
             .FirstOrDefault();
         if (openEnd is null)
             throw new InvalidOperationException(
-                "Case 04 requires an open connector at one end of the selected main.");
+                "The selected main has no open end near the picked point. " +
+                "Pick farther inside the pipe so the shorter surplus tail can be removed.");
         bool atStart = openEnd.Origin.DistanceTo(start) <= openEnd.Origin.DistanceTo(end);
         return atStart ? (end, start) : (start, end);
+    }
+
+    private static XYZ RetainedMainEndpoint(
+        XYZ start,
+        XYZ end,
+        XYZ connectionPoint)
+    {
+        double elevationDifference = end.Z - start.Z;
+        if (Math.Abs(elevationDifference) > DrainGeometry.Mm(0.5))
+            return elevationDifference > 0.0 ? start : end;
+
+        // A level main has no downhill side, so retain the larger useful side
+        // and remove the shorter surplus tail as before.
+        return connectionPoint.DistanceTo(start) >= connectionPoint.DistanceTo(end)
+            ? start
+            : end;
     }
 
     private static double PlanDistance(XYZ first, XYZ second)
@@ -2323,18 +4589,27 @@ internal static class DrainRoutingService
 
     private sealed record ApproachPipes(Pipe Stub, Pipe Diagonal);
 
+    private sealed record SourceConnection(
+        Pipe? Adapter,
+        FamilyInstance? Transition,
+        bool HasOpenBreak = false,
+        XYZ? BreakPoint = null,
+        string? Warning = null);
+
     private sealed record JunctionSeed(Pipe Pipe, FamilyInstance Transition);
 
     private sealed record JunctionConnectors(
         Connector RunA,
         Connector RunB,
-        Connector Branch);
+        Connector Branch,
+        XYZ Center);
 
     private sealed record PreparedJunctionType(
         ElementId TypeId,
         ElementId PartId,
         string Label,
-        double FittingAngleDegrees);
+        double FittingAngleDegrees,
+        bool NativeRouting = true);
 
     private sealed record JunctionRuleCandidate(
         int RuleIndex,

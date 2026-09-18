@@ -285,7 +285,7 @@ internal static class SmartTagStandardV2Layout
     // text and leader checks all remain no worse.
     private static List<TagLayoutPlacement> SnapNearlyAlignedDuctRails(
         IReadOnlyList<TagLayoutPlacement> source,
-        IReadOnlySet<long> ductKeys,
+        ISet<long> ductKeys,
         IReadOnlyList<TagLayoutPlacement> fixedTags,
         IReadOnlyList<LayoutObstacle> obstacles,
         LayoutRect frame,
@@ -348,7 +348,7 @@ internal static class SmartTagStandardV2Layout
     // clash. This is deliberately a bounded local pass, not a new layout.
     private static List<TagLayoutPlacement> OptimizeAlignedDuctLeaderOrder(
         IReadOnlyList<TagLayoutPlacement> source,
-        IReadOnlySet<long> ductKeys,
+        ISet<long> ductKeys,
         IReadOnlyList<TagLayoutPlacement> fixedTags,
         IReadOnlyList<LayoutObstacle> obstacles,
         LayoutRect frame,
@@ -492,7 +492,7 @@ internal static class SmartTagStandardV2Layout
 
     private static List<TagLayoutPlacement> RepairAlignedDuctRows(
         IReadOnlyList<TagLayoutPlacement> source,
-        IReadOnlySet<long> ductKeys,
+        ISet<long> ductKeys,
         IReadOnlyDictionary<long, LayoutTagInput> ductInputs,
         IReadOnlyDictionary<long, TagLayoutPlacement> horizontalByKey,
         IReadOnlyList<TagLayoutPlacement> fixedTags,

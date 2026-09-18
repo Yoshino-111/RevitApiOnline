@@ -372,7 +372,8 @@ internal static class ExteriorWallExcelExporter
     }
 
     private static IEnumerable<string> SplitElementIds(string elementIds) => elementIds
-        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+        .Select(value => value.Trim())
         .Where(value => value.Length > 0);
 
     private static IReadOnlyList<IReadOnlyList<Cell>> LinearReplaceGroupTable(IReadOnlyList<ExteriorWallRow> rows)

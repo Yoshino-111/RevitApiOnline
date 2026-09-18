@@ -114,7 +114,7 @@ internal static class SmartTagCompactGroupLayout
             double minimumColumnLeft = frame.MinU + settings.TopMargin;
             double maximumColumnLeft = frame.MaxU - settings.TopMargin - componentTagWidth;
             double ClampColumn(double candidate) => maximumColumnLeft >= minimumColumnLeft
-                ? Math.Clamp(candidate, minimumColumnLeft, maximumColumnLeft)
+                ? PortableMath.Clamp(candidate, minimumColumnLeft, maximumColumnLeft)
                 : frame.MinU;
             double leftCanonicalColumn = ClampColumn(
                 ordered.Min(item => item.ElementBounds.MinU) -

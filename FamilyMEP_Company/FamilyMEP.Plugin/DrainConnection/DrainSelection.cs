@@ -81,7 +81,7 @@ internal static class DrainSelection
             .OrderBy(item => item.Origin.DistanceTo(point))
             .FirstOrDefault();
         if (best is null || best.Origin.DistanceTo(point) > DrainGeometry.Mm(3))
-            throw new InvalidOperationException($"No connector found at the expected point on {element.Id.Value}.");
+            throw new InvalidOperationException($"No connector found at the expected point on {element.Id.CompatValue()}.");
         return best;
     }
 }

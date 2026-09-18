@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RevitVersion Condition="'$(RevitVersion)' == ''">2025</RevitVersion>
+    <TargetFramework Condition="'$(RevitVersion)' == '2020' Or '$(RevitVersion)' == '2021' Or '$(RevitVersion)' == '2022' Or '$(RevitVersion)' == '2023' Or '$(RevitVersion)' == '2024'">net48</TargetFramework>
+    <TargetFramework Condition="'$(RevitVersion)' == '2025' Or '$(RevitVersion)' == '2026'">net8.0-windows10.0.17763.0</TargetFramework>
+    <TargetFramework Condition="'$(RevitVersion)' == '2027'">net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>DrainConnection.Entry</AssemblyName>
+    <RootNamespace>FamilyMEP.DrainConnection.Entry</RootNamespace>
+    <DefineConstants>$(DefineConstants);REVIT$(RevitVersion)</DefineConstants>
+    <RevitApiPath Condition="'$(RevitVersion)' != '2026' And '$(RevitVersion)' != '2027'">C:\Program Files\Autodesk\Revit $(RevitVersion)\RevitAPI.dll</RevitApiPath>
+    <RevitApiUiPath Condition="'$(RevitVersion)' != '2026' And '$(RevitVersion)' != '2027'">C:\Program Files\Autodesk\Revit $(RevitVersion)\RevitAPIUI.dll</RevitApiUiPath>
+    <RevitApiPath Condition="'$(RevitVersion)' == '2026'">C:\RevitReferencePacks\2026\RevitAPI.dll</RevitApiPath>
+    <RevitApiUiPath Condition="'$(RevitVersion)' == '2026'">C:\RevitReferencePacks\2026\RevitAPIUI.dll</RevitApiUiPath>
+    <RevitApiPath Condition="'$(RevitVersion)' == '2027'">C:\RevitReferencePacks\2027\RevitAPI.dll</RevitApiPath>
+    <RevitApiUiPath Condition="'$(RevitVersion)' == '2027'">C:\RevitReferencePacks\2027\RevitAPIUI.dll</RevitApiUiPath>
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+    <DependencyFolder Condition="'$(DependencyFolder)' == ''">..\multi-probe\$(RevitVersion)</DependencyFolder>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="RevitAPI"><HintPath>$(RevitApiPath)</HintPath><Private>false</Private></Reference>
+    <Reference Include="RevitAPIUI"><HintPath>$(RevitApiUiPath)</HintPath><Private>false</Private></Reference>
+    <Reference Include="FamilyMEP.Plugin"><HintPath>$(DependencyFolder)\FamilyMEP.Plugin.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="RevitHotReload.Abstractions"><HintPath>$(DependencyFolder)\RevitHotReload.Abstractions.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\DrainConnectionRibbonAnimator.cs" Link="Ribbon\DrainConnectionRibbonAnimator.cs" />
+    <EmbeddedResource Include="..\Assets\Ribbon\DrainConnection\drain-connection-??-*.png"
+                      Link="Assets\Ribbon\DrainConnection\%(Filename)%(Extension)"
+                      LogicalName="FamilyMEP.RibbonIcons.DrainConnection.%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

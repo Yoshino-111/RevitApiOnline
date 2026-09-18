@@ -152,9 +152,9 @@ internal sealed class PdfVectorScene
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
-            startInfo.ArgumentList.Add("extract");
-            startInfo.ArgumentList.Add(pdfPath);
-            startInfo.ArgumentList.Add(temporaryPath);
+            startInfo.AddArgument("extract");
+            startInfo.AddArgument(pdfPath);
+            startInfo.AddArgument(temporaryPath);
             try
             {
                 using Process process = Process.Start(startInfo)
@@ -168,7 +168,7 @@ internal sealed class PdfVectorScene
                         string.IsNullOrWhiteSpace(standardError)
                             ? $"PDF vector extractor exited with code {process.ExitCode}. {standardOutput}"
                             : standardError.Trim());
-                File.Move(temporaryPath, cachePath, true);
+                PortableFramework.MoveOverwrite(temporaryPath, cachePath);
             }
             finally
             {
@@ -677,7 +677,7 @@ internal sealed class PdfVectorScene
     {
         FileInfo source = new(pdfPath);
         string fingerprint = $"{source.FullName.ToUpperInvariant()}|{source.Length}|{source.LastWriteTimeUtc.Ticks}|vector-v2";
-        string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint)))[..20];
+        string key = PortableApi.ToHexString(PortableApi.HashData(Encoding.UTF8.GetBytes(fingerprint)))[..20];
         string folder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "FamilyMEP",

@@ -280,7 +280,7 @@ internal sealed class ValveBuilderWindow : Window
     {
         _hasSelectedFamily = hasSelectedFamily;
         _selectedFamilyDescription = selectedFamilyDescription;
-        int catalogIndex = Math.Clamp(initialCatalogIndex, 0, Catalogs.Length - 1);
+        int catalogIndex = PortableMath.Clamp(initialCatalogIndex, 0, Catalogs.Length - 1);
         ValveCatalogDefinition initialCatalog = Catalogs[catalogIndex];
         _selectedCatalog = initialCatalog;
         _selectedPreset = initialCatalog.Sizes[^1];
@@ -375,9 +375,9 @@ internal sealed class ValveBuilderWindow : Window
         bool openGeneratedFamily)
     {
         ValveCatalogDefinition catalog = Catalogs[
-            Math.Clamp(catalogIndex, 0, Catalogs.Length - 1)];
+            PortableMath.Clamp(catalogIndex, 0, Catalogs.Length - 1)];
         ValveSizePreset preset = catalog.Sizes[
-            Math.Clamp(presetIndex, 0, catalog.Sizes.Length - 1)];
+            PortableMath.Clamp(presetIndex, 0, catalog.Sizes.Length - 1)];
         string resolvedOutput = string.IsNullOrWhiteSpace(outputPath)
             ? IOPath.Combine(
                 AppPaths.GeneratedValveFolder,
@@ -962,8 +962,8 @@ internal sealed class ValveBuilderWindow : Window
 
         const double centerX = 365;
         const double centerY = 285;
-        double bodyWidth = Math.Clamp(length * 2.15, 245, 390);
-        double bodyHeight = Math.Clamp(bodyOd * 2.15, 112, 190);
+        double bodyWidth = PortableMath.Clamp(length * 2.15, 245, 390);
+        double bodyHeight = PortableMath.Clamp(bodyOd * 2.15, 112, 190);
         double left = centerX - bodyWidth / 2;
         double top = centerY - bodyHeight / 2;
 
@@ -977,16 +977,16 @@ internal sealed class ValveBuilderWindow : Window
         AddEllipse(left + 32, top, bodyWidth - 64, bodyHeight, Brush(221, 225, 230), Brush(65, 75, 87), 2);
         AddEllipse(left + 60, top + 8, bodyWidth - 120, bodyHeight - 16, Brush(198, 205, 214), Brush(91, 101, 113), 1.5);
 
-        double portSize = Math.Clamp(dn * 1.55, 46, 108);
+        double portSize = PortableMath.Clamp(dn * 1.55, 46, 108);
         AddEllipse(left - 39, centerY - portSize / 2, 42, portSize, Brush(42, 45, 49), Orange, 4);
         AddEllipse(left + bodyWidth - 3, centerY - portSize / 2, 42, portSize, Brush(42, 45, 49), Orange, 4);
 
-        double stemHeight = Math.Clamp(height * 1.05, 74, 120);
+        double stemHeight = PortableMath.Clamp(height * 1.05, 74, 120);
         AddRectangle(centerX - 25, top - stemHeight + 26, 50, stemHeight - 18, Brush(178, 186, 196), Brush(65, 75, 87), 2, 5);
         AddEllipse(centerX - 37, top - stemHeight + 16, 74, 28, Brush(210, 215, 221), Brush(65, 75, 87), 2);
         AddEllipse(centerX - 22, top - stemHeight - 1, 44, 30, Brush(183, 190, 199), Brush(65, 75, 87), 2);
 
-        double handle = Math.Clamp(handleLength * 1.85, 185, 305);
+        double handle = PortableMath.Clamp(handleLength * 1.85, 185, 305);
         AddRectangle(centerX - 8, top - stemHeight - 18, handle, 22, Brush(43, 91, 151), Brush(36, 55, 78), 2, 10);
 
         AddDimensionLine(left - 46, centerY + bodyHeight / 2 + 66, left + bodyWidth + 46, centerY + bodyHeight / 2 + 66, $"L {length:0.#}");
@@ -1004,11 +1004,11 @@ internal sealed class ValveBuilderWindow : Window
     {
         const double centerX = 360;
         const double pipeY = 330;
-        double bodyWidth = Math.Clamp(length * 2.15, 190, 300);
-        double bodyHeight = Math.Clamp(bodyOd * 1.55, 86, 165);
+        double bodyWidth = PortableMath.Clamp(length * 2.15, 190, 300);
+        double bodyHeight = PortableMath.Clamp(bodyOd * 1.55, 86, 165);
         double left = centerX - bodyWidth / 2;
         double top = pipeY - bodyHeight / 2;
-        double portSize = Math.Clamp(dn * 1.25, 32, 90);
+        double portSize = PortableMath.Clamp(dn * 1.25, 32, 90);
 
         AddPreviewText("Connector 1", left - 88, pipeY - 100, Orange, 13, FontWeights.SemiBold);
         AddPreviewText("Connector 2", left + bodyWidth + 14, pipeY - 100, Orange, 13, FontWeights.SemiBold);
@@ -1032,7 +1032,7 @@ internal sealed class ValveBuilderWindow : Window
             Brush(42, 45, 49), Orange, 4);
 
         double bonnetBottom = top + 24;
-        double bonnetHeight = Math.Clamp(height * .42, 82, 150);
+        double bonnetHeight = PortableMath.Clamp(height * .42, 82, 150);
         AddRectangle(centerX - 37, bonnetBottom - bonnetHeight * .42, 74, bonnetHeight * .42,
             Brush(190, 197, 206), Brush(61, 71, 83), 2, 7);
         AddEllipse(centerX - 49, bonnetBottom - bonnetHeight * .48, 98, 30,
@@ -1040,7 +1040,7 @@ internal sealed class ValveBuilderWindow : Window
         AddRectangle(centerX - 15, bonnetBottom - bonnetHeight, 30, bonnetHeight * .58,
             Brush(178, 186, 196), Brush(61, 71, 83), 2, 5);
 
-        double wheel = Math.Clamp(wheelDiameter * 1.3, 105, 215);
+        double wheel = PortableMath.Clamp(wheelDiameter * 1.3, 105, 215);
         double wheelTop = bonnetBottom - bonnetHeight - wheel * .33;
         AddEllipse(centerX - wheel / 2, wheelTop, wheel, wheel * .42,
             Brushes.Transparent, Brush(43, 91, 151), 10);
@@ -1073,9 +1073,9 @@ internal sealed class ValveBuilderWindow : Window
     {
         const double centerX = 350;
         const double centerY = 335;
-        double port = Math.Clamp(dn * 1.2, 34, 92);
-        double body = Math.Clamp(bodyOd * 1.7, 100, 190);
-        double vertical = Math.Clamp(height * 1.05, 150, 300);
+        double port = PortableMath.Clamp(dn * 1.2, 34, 92);
+        double body = PortableMath.Clamp(bodyOd * 1.7, 100, 190);
+        double vertical = PortableMath.Clamp(height * 1.05, 150, 300);
         AddEllipse(centerX - body / 2, centerY - body * .62, body, body,
             Brush(208, 214, 222), Brush(61, 71, 83), 2);
         AddRectangle(centerX - body * .42, centerY - 20, body * .84, 64,
@@ -1086,7 +1086,7 @@ internal sealed class ValveBuilderWindow : Window
             Brush(187, 195, 204), Brush(61, 71, 83), 2, 7);
         AddEllipse(centerX - port / 2, centerY - vertical - 22, port, 44,
             Brush(42, 45, 49), Orange, 4);
-        double wheel = Math.Clamp(wheelDiameter * 1.2, 105, 210);
+        double wheel = PortableMath.Clamp(wheelDiameter * 1.2, 105, 210);
         AddEllipse(centerX - wheel / 2, centerY - vertical - 75, wheel, wheel * .38,
             Brushes.Transparent, Brush(43, 91, 151), 9);
         AddPreviewText("Connector 1", centerX - body / 2 - 100, centerY - 92,
@@ -1109,10 +1109,10 @@ internal sealed class ValveBuilderWindow : Window
     {
         const double centerX = 360;
         const double centerY = 300;
-        double bodyWidth = Math.Clamp(length * 2.05, 180, 420);
-        double bodyHeight = Math.Clamp(bodyOd * 1.65, 72, 190);
+        double bodyWidth = PortableMath.Clamp(length * 2.05, 180, 420);
+        double bodyHeight = PortableMath.Clamp(bodyOd * 1.65, 72, 190);
         double left = centerX - bodyWidth / 2;
-        double port = Math.Clamp(dn * 1.2, 30, 105);
+        double port = PortableMath.Clamp(dn * 1.2, 30, 105);
         AddRectangle(left, centerY - bodyHeight * .38, bodyWidth, bodyHeight * .76,
             Brush(202, 208, 216), Brush(61, 71, 83), 2, bodyHeight * .2);
         AddEllipse(left - 30, centerY - port / 2, 48, port,
@@ -1148,8 +1148,8 @@ internal sealed class ValveBuilderWindow : Window
     {
         const double centerX = 360;
         const double centerY = 310;
-        double disc = Math.Clamp(height * 1.18, 150, 300);
-        double wafer = Math.Clamp(length * 2.2, 72, 145);
+        double disc = PortableMath.Clamp(height * 1.18, 150, 300);
+        double wafer = PortableMath.Clamp(length * 2.2, 72, 145);
         AddEllipse(centerX - wafer / 2, centerY - disc / 2, wafer, disc,
             Brush(190, 198, 208), Brush(55, 66, 79), 3);
         AddEllipse(centerX - wafer * .34, centerY - disc * .42, wafer * .68, disc * .84,

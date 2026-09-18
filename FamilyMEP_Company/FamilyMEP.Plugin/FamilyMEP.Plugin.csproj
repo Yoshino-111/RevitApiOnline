@@ -3,7 +3,7 @@
     <RevitVersion Condition="'$(RevitVersion)' == ''">2025</RevitVersion>
     <TargetFramework Condition="'$(RevitVersion)' == '2020' Or '$(RevitVersion)' == '2021' Or '$(RevitVersion)' == '2022' Or '$(RevitVersion)' == '2023' Or '$(RevitVersion)' == '2024'">net48</TargetFramework>
     <TargetFramework Condition="'$(RevitVersion)' == '2025' Or '$(RevitVersion)' == '2026'">net8.0-windows10.0.17763.0</TargetFramework>
-    <TargetFramework Condition="'$(RevitVersion)' == '2027'">net10.0-windows10.0.17763.0</TargetFramework>
+    <TargetFramework Condition="'$(RevitVersion)' == '2027'">net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseSystemDrawing>true</UseSystemDrawing>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
@@ -58,5 +58,14 @@
     <None Include="Ui\SmartTagQuickAlignWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\Backgrounds\*.png" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\DrainConnection\*.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\DrainConnection\case01-thumb.png" />
+    <EmbeddedResource Include="Assets\DrainConnection\case02-thumb.png" />
+    <EmbeddedResource Include="Assets\DrainConnection\case03-thumb.png" />
+    <EmbeddedResource Include="Assets\DrainConnection\case04-thumb.png" />
+    <EmbeddedResource Include="Assets\DrainConnection\case05-thumb.png" />
+    <EmbeddedResource Include="Assets\DrainConnection\case06-thumb.png" />
   </ItemGroup>
 </Project>

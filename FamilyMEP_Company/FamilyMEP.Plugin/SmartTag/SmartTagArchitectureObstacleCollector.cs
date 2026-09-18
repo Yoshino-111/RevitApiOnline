@@ -46,7 +46,7 @@ internal static class SmartTagArchitectureObstacleCollector
                 element,
                 element.get_BoundingBox(view) ?? element.get_BoundingBox(null),
                 Transform.Identity,
-                element.Id.Value);
+                element.Id.CompatValue());
         }
 
         IEnumerable<RevitLinkInstance> visibleLinks = new FilteredElementCollector(document, view.Id)
@@ -63,10 +63,7 @@ internal static class SmartTagArchitectureObstacleCollector
             {
                 // Revit 2025 filters linked elements by their visibility in the
                 // host view, avoiding walls/furniture from unrelated levels.
-                linkedElements = new FilteredElementCollector(
-                        document,
-                        view.Id,
-                        link.Id)
+                linkedElements = PortableApi.LinkedCollector(document, view.Id, link)
                     .WherePasses(categoryFilter)
                     .WhereElementIsNotElementType()
                     .ToElements();
@@ -89,7 +86,7 @@ internal static class SmartTagArchitectureObstacleCollector
                     element,
                     box,
                     linkTransform,
-                    CreateLinkedKey(link.Id.Value, element.Id.Value));
+                    CreateLinkedKey(link.Id.CompatValue(), element.Id.CompatValue()));
             }
         }
 
@@ -145,7 +142,7 @@ internal static class SmartTagArchitectureObstacleCollector
 
     private static bool IsArchitecturalCategory(Element element)
     {
-        long categoryId = element.Category?.Id.Value ?? long.MaxValue;
+        long categoryId = element.Category?.Id.CompatValue() ?? long.MaxValue;
         return ArchitecturalCategories.Any(category => (long)category == categoryId);
     }
 

@@ -40,4 +40,4 @@
     <Compile Include="..\..\FamilyMEP.Plugin\SmartTag\SmartTagDuctDensity.cs"
              Link="SmartTagDuctDensity.cs" />
   </ItemGroup>
-</Project>
+<ItemGroup><Compile Include="..\..\FamilyMEP.Plugin\Compatibility\PortableMath.cs" Link="PortableMath.cs" /><Using Include="FamilyMEP.Plugin.Compatibility" /></ItemGroup></Project>

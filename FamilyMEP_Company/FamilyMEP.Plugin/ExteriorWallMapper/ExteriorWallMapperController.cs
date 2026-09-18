@@ -1423,7 +1423,7 @@ internal sealed class ExteriorWallMapperController : IDisposable
         UIDocument uidoc = RequireUidoc(application);
         HashSet<long> selectedHostElementIds = uidoc.Selection
             .GetElementIds()
-            .Select(id => id.Value)
+            .Select(id => id.CompatValue())
             .ToHashSet();
         FocusOccurrence[] selectedSpaceMatches = elementIds.Count == 1
             ? occurrences.Where(item => selectedHostElementIds.Contains(item.Row.SpaceId)).ToArray()
@@ -1482,7 +1482,7 @@ internal sealed class ExteriorWallMapperController : IDisposable
             // that misleading blue link bounding box; the red transient geometry
             // below identifies the exact nested source element instead.
             if (reference.NestedLinkInstancePath.Count > 0) continue;
-            if (_document.GetElement(new ElementId(reference.RootLinkInstanceId)) is not RevitLinkInstance link) continue;
+            if (_document.GetElement(PortableApi.ElementId(reference.RootLinkInstanceId)) is not RevitLinkInstance link) continue;
             if (TryCreateActualLinkedReference(link, reference, out RevitReference? actualReference))
                 selectableReferences.Add(actualReference!);
         }
@@ -1509,11 +1509,11 @@ internal sealed class ExteriorWallMapperController : IDisposable
             {
                 RestoreSectionBox();
             }
-            RestoreContextTransparencyExceptInOpenTransaction(focusView.Id.Value);
+            RestoreContextTransparencyExceptInOpenTransaction(focusView.Id.CompatValue());
             ApplyContextTransparencyInOpenTransaction(focusView, _contextTransparencyPercent);
             transaction.Commit();
         }
-        _isolationViewId = focusView.Id.Value;
+        _isolationViewId = focusView.Id.CompatValue();
 
         bool submittedLinkedSelection = false;
         if (selectableReferences.Count > 0)
@@ -1631,7 +1631,7 @@ internal sealed class ExteriorWallMapperController : IDisposable
         ElementId targetLevelId = ElementId.InvalidElementId;
         foreach (FocusOccurrence occurrence in occurrences)
         {
-            ElementId? levelId = _document.GetElement(new ElementId(occurrence.Row.SpaceId))?.LevelId;
+            ElementId? levelId = _document.GetElement(PortableApi.ElementId(occurrence.Row.SpaceId))?.LevelId;
             if (levelId is null || levelId == ElementId.InvalidElementId) continue;
             targetLevelId = levelId;
             break;
@@ -1697,7 +1697,7 @@ internal sealed class ExteriorWallMapperController : IDisposable
             .DistinctBy(reference => $"{reference.RootLinkInstanceId}|{reference.LinkPath}|{reference.LinkedElementId}")
             .ToArray();
         ElementId[] rootLinkIds = references
-            .Select(reference => new ElementId(reference.RootLinkInstanceId))
+            .Select(reference => PortableApi.ElementId(reference.RootLinkInstanceId))
             .Where(id => _document.GetElement(id) is RevitLinkInstance)
             .Distinct()
             .ToArray();
@@ -1714,7 +1714,7 @@ internal sealed class ExteriorWallMapperController : IDisposable
                 nestedUnsupportedCount++;
                 continue;
             }
-            if (_document.GetElement(new ElementId(item.RootLinkInstanceId)) is not RevitLinkInstance link) continue;
+            if (_document.GetElement(PortableApi.ElementId(item.RootLinkInstanceId)) is not RevitLinkInstance link) continue;
             if (TryCreateActualLinkedReference(link, item, out RevitReference? actualReference))
             {
                 selectableReferences.Add(actualReference!);
@@ -1764,14 +1764,14 @@ internal sealed class ExteriorWallMapperController : IDisposable
         var nestedInstances = new List<RevitLinkInstance>();
         foreach (long nestedId in item.NestedLinkInstancePath)
         {
-            if (currentDocument.GetElement(new ElementId(nestedId)) is not RevitLinkInstance nested)
+            if (currentDocument.GetElement(PortableApi.ElementId(nestedId)) is not RevitLinkInstance nested)
                 return false;
             nestedInstances.Add(nested);
             currentDocument = nested.GetLinkDocument();
             if (currentDocument is null) return false;
         }
 
-        Element? target = currentDocument.GetElement(new ElementId(item.LinkedElementId));
+        Element? target = currentDocument.GetElement(PortableApi.ElementId(item.LinkedElementId));
         if (target is null) return false;
 
         try
@@ -1842,18 +1842,18 @@ internal sealed class ExteriorWallMapperController : IDisposable
     private bool TryResolveLinkedElement(LinkedWallReference reference, out Element? element)
     {
         element = null;
-        if (_document.GetElement(new ElementId(reference.RootLinkInstanceId)) is not RevitLinkInstance rootLink)
+        if (_document.GetElement(PortableApi.ElementId(reference.RootLinkInstanceId)) is not RevitLinkInstance rootLink)
             return false;
         Document? sourceDocument = rootLink.GetLinkDocument();
         if (sourceDocument is null) return false;
         foreach (long nestedId in reference.NestedLinkInstancePath)
         {
-            if (sourceDocument.GetElement(new ElementId(nestedId)) is not RevitLinkInstance nested)
+            if (sourceDocument.GetElement(PortableApi.ElementId(nestedId)) is not RevitLinkInstance nested)
                 return false;
             sourceDocument = nested.GetLinkDocument();
             if (sourceDocument is null) return false;
         }
-        element = sourceDocument.GetElement(new ElementId(reference.LinkedElementId));
+        element = sourceDocument.GetElement(PortableApi.ElementId(reference.LinkedElementId));
         return element is not null;
     }
 
@@ -2013,7 +2013,7 @@ internal sealed class ExteriorWallMapperController : IDisposable
         ElementId wallCategory = new(BuiltInCategory.OST_Walls);
         ElementId previewCategory = DirectShape.IsValidCategoryId(wallCategory, _document)
             ? wallCategory
-            : new ElementId(BuiltInCategory.OST_GenericModel);
+            : PortableApi.ElementId(BuiltInCategory.OST_GenericModel);
         DirectShape preview = DirectShape.CreateElement(
             _document,
             previewCategory);
@@ -2116,12 +2116,12 @@ internal sealed class ExteriorWallMapperController : IDisposable
     private void ApplySectionBox(View3D view, IReadOnlyList<LinkedWallReference> references)
     {
         if (references.Count == 0) return;
-        if (_sectionBoxSnapshot is not null && _sectionBoxSnapshot.ViewId != view.Id.Value)
+        if (_sectionBoxSnapshot is not null && _sectionBoxSnapshot.ViewId != view.Id.CompatValue())
             RestoreSectionBox();
         if (_sectionBoxSnapshot is null)
         {
             _sectionBoxSnapshot = new SectionBoxSnapshot(
-                view.Id.Value,
+                view.Id.CompatValue(),
                 view.IsSectionBoxActive,
                 CloneBox(view.GetSectionBox()));
         }
@@ -2145,7 +2145,7 @@ internal sealed class ExteriorWallMapperController : IDisposable
     private void RestoreSectionBox()
     {
         if (_sectionBoxSnapshot is null) return;
-        if (_document.GetElement(new ElementId(_sectionBoxSnapshot.ViewId)) is View3D view && !view.IsTemplate)
+        if (_document.GetElement(PortableApi.ElementId(_sectionBoxSnapshot.ViewId)) is View3D view && !view.IsTemplate)
         {
             view.SetSectionBox(CloneBox(_sectionBoxSnapshot.Box));
             view.IsSectionBoxActive = _sectionBoxSnapshot.WasActive;
@@ -2184,18 +2184,18 @@ internal sealed class ExteriorWallMapperController : IDisposable
             return;
         }
 
-        int transparency = Math.Clamp(_contextTransparencyPercent, 0, 90);
+        int transparency = PortableMath.Clamp(_contextTransparencyPercent, 0, 90);
         Queue(
             application =>
             {
                 UIDocument uidoc = RequireUidoc(application);
-                View view = _document.GetElement(new ElementId(_isolationViewId.Value)) as View
+                View view = _document.GetElement(PortableApi.ElementId(_isolationViewId.Value)) as View
                     ?? uidoc.ActiveView;
                 using var transaction = new Transaction(
                     _document,
                     "Exterior Wall Mapper - context transparency");
                 transaction.Start();
-                RestoreContextTransparencyExceptInOpenTransaction(view.Id.Value);
+                RestoreContextTransparencyExceptInOpenTransaction(view.Id.CompatValue());
                 ApplyContextTransparencyInOpenTransaction(view, transparency);
                 transaction.Commit();
                 if (uidoc.ActiveView.Id != view.Id) uidoc.ActiveView = view;
@@ -2211,14 +2211,14 @@ internal sealed class ExteriorWallMapperController : IDisposable
 
     private void ApplyContextTransparencyInOpenTransaction(View view, int transparency)
     {
-        transparency = Math.Clamp(transparency, 0, 90);
+        transparency = PortableMath.Clamp(transparency, 0, 90);
         if (transparency == 0)
         {
-            RestoreContextTransparencyInOpenTransaction(view.Id.Value);
+            RestoreContextTransparencyInOpenTransaction(view.Id.CompatValue());
             return;
         }
 
-        if (!_contextTransparencySnapshots.TryGetValue(view.Id.Value, out ContextTransparencySnapshot? snapshot))
+        if (!_contextTransparencySnapshots.TryGetValue(view.Id.CompatValue(), out ContextTransparencySnapshot? snapshot))
         {
             var categoryOverrides = new Dictionary<long, OverrideGraphicSettings>();
             foreach (Category category in _document.Settings.Categories)
@@ -2230,7 +2230,7 @@ internal sealed class ExteriorWallMapperController : IDisposable
                     var faded = new OverrideGraphicSettings(original);
                     faded.SetSurfaceTransparency(transparency);
                     view.SetCategoryOverrides(category.Id, faded);
-                    categoryOverrides[category.Id.Value] = original;
+                    categoryOverrides[category.Id.CompatValue()] = original;
                 }
                 catch
                 {
@@ -2250,11 +2250,11 @@ internal sealed class ExteriorWallMapperController : IDisposable
                     var faded = new OverrideGraphicSettings(original);
                     faded.SetSurfaceTransparency(transparency);
                     view.SetElementOverrides(link.Id, faded);
-                    elementOverrides[link.Id.Value] = original;
+                    elementOverrides[link.Id.CompatValue()] = original;
                 }
                 catch { }
             }
-            _contextTransparencySnapshots[view.Id.Value] = new ContextTransparencySnapshot(
+            _contextTransparencySnapshots[view.Id.CompatValue()] = new ContextTransparencySnapshot(
                 categoryOverrides,
                 elementOverrides);
             return;
@@ -2266,7 +2266,7 @@ internal sealed class ExteriorWallMapperController : IDisposable
             {
                 var faded = new OverrideGraphicSettings(original);
                 faded.SetSurfaceTransparency(transparency);
-                view.SetCategoryOverrides(new ElementId(categoryId), faded);
+                view.SetCategoryOverrides(PortableApi.ElementId(categoryId), faded);
             }
             catch { }
         }
@@ -2276,7 +2276,7 @@ internal sealed class ExteriorWallMapperController : IDisposable
             {
                 var faded = new OverrideGraphicSettings(original);
                 faded.SetSurfaceTransparency(transparency);
-                view.SetElementOverrides(new ElementId(elementId), faded);
+                view.SetElementOverrides(PortableApi.ElementId(elementId), faded);
             }
             catch { }
         }
@@ -2293,15 +2293,15 @@ internal sealed class ExteriorWallMapperController : IDisposable
     private void RestoreContextTransparencyInOpenTransaction(long viewId)
     {
         if (!_contextTransparencySnapshots.Remove(viewId, out ContextTransparencySnapshot? snapshot)) return;
-        if (_document.GetElement(new ElementId(viewId)) is not View view || view.IsTemplate) return;
+        if (_document.GetElement(PortableApi.ElementId(viewId)) is not View view || view.IsTemplate) return;
         foreach ((long categoryId, OverrideGraphicSettings original) in snapshot.CategoryOverrides)
         {
-            try { view.SetCategoryOverrides(new ElementId(categoryId), original); }
+            try { view.SetCategoryOverrides(PortableApi.ElementId(categoryId), original); }
             catch { }
         }
         foreach ((long elementId, OverrideGraphicSettings original) in snapshot.ElementOverrides)
         {
-            try { view.SetElementOverrides(new ElementId(elementId), original); }
+            try { view.SetElementOverrides(PortableApi.ElementId(elementId), original); }
             catch { }
         }
     }
@@ -2319,7 +2319,7 @@ internal sealed class ExteriorWallMapperController : IDisposable
             {
                 UIDocument uidoc = RequireUidoc(application);
                 View view = _isolationViewId.HasValue
-                    ? _document.GetElement(new ElementId(_isolationViewId.Value)) as View ?? uidoc.ActiveView
+                    ? _document.GetElement(PortableApi.ElementId(_isolationViewId.Value)) as View ?? uidoc.ActiveView
                     : uidoc.ActiveView;
                 bool hasPreviews = HasTemporaryPreviews();
                 if (view.IsTemporaryHideIsolateActive() || _sectionBoxSnapshot is not null || hasPreviews ||
@@ -2357,7 +2357,7 @@ internal sealed class ExteriorWallMapperController : IDisposable
         if (!hasPreviews && _sectionBoxSnapshot is null && !_isolationViewId.HasValue &&
             _contextTransparencySnapshots.Count == 0) return;
         View? view = _isolationViewId.HasValue
-            ? _document.GetElement(new ElementId(_isolationViewId.Value)) as View
+            ? _document.GetElement(PortableApi.ElementId(_isolationViewId.Value)) as View
             : application.ActiveUIDocument?.Document.Equals(_document) == true
                 ? application.ActiveUIDocument.ActiveView
                 : null;

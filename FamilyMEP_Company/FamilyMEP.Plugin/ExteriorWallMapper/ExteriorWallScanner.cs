@@ -13,7 +13,7 @@ internal static class ExteriorWallScanner
 
     internal static ExteriorWallScanResult Scan(Document hostDocument)
     {
-        ArgumentNullException.ThrowIfNull(hostDocument);
+        if (hostDocument is null) throw new ArgumentNullException(nameof(hostDocument));
         if (hostDocument.IsFamilyDocument)
             throw new InvalidOperationException("Exterior Wall Mapper requires a Revit project document.");
 
@@ -45,7 +45,7 @@ internal static class ExteriorWallScanner
                 segmentRows,
                 warnings,
                 diagnostics,
-                boundaryIndex.GetValueOrDefault(space.LevelId.Value, []));
+                boundaryIndex.GetValueOrDefault(space.LevelId.CompatValue(), []));
 
         // Keep one logical row per Space face. Highlight later de-duplicates the
         // linked element references, while LINEAR still needs every room surface.
@@ -131,7 +131,7 @@ internal static class ExteriorWallScanner
                     exteriorNormal);
                 BoundaryEdge? adjacentBoundary = null;
                 bool hasAdjacentSpace = adjacentSpace is not null || TryFindBoundaryClusterAcross(
-                    space.Id.Value,
+                    space.Id.CompatValue(),
                     curve,
                     exteriorNormal,
                     levelBoundaries,
@@ -142,7 +142,7 @@ internal static class ExteriorWallScanner
                     rootLink,
                     exteriorNormal,
                     Orientation(exteriorNormal),
-                    adjacentSpace?.Id.Value ?? adjacentBoundary?.SpaceId ?? 0,
+                    adjacentSpace?.Id.CompatValue() ?? adjacentBoundary?.SpaceId ?? 0,
                     adjacentSpace?.Number ?? adjacentBoundary?.SpaceNumber ?? string.Empty,
                     adjacentSpace?.Name ?? adjacentBoundary?.SpaceName ?? string.Empty);
                 if (hasAdjacentSpace)
@@ -204,7 +204,7 @@ internal static class ExteriorWallScanner
                     if (rootLink is null) continue;
                     BoundingBoxXYZ fallbackBounds = CurveBounds(curve, sampleZ, height);
                     output.Add(new SegmentRow(
-                        space.Id.Value,
+                        space.Id.CompatValue(),
                         space.Number ?? string.Empty,
                         space.Name ?? string.Empty,
                         0,
@@ -221,7 +221,7 @@ internal static class ExteriorWallScanner
                         rootLink.Name,
                         areaM2,
                         "Unmapped",
-                        $"UNMAPPED|{rootLink.Id.Value}|{directLinkedId.Value}",
+                        $"UNMAPPED|{rootLink.Id.CompatValue()}|{directLinkedId.CompatValue()}",
                         [],
                         [],
                         string.Empty,
@@ -235,7 +235,7 @@ internal static class ExteriorWallScanner
                 // default even when IFC/Revit did not set IsExternal correctly.
                 string status = assembly.LayerCount > 0 ? "Ready" : "Review";
                 output.Add(new SegmentRow(
-                    space.Id.Value,
+                    space.Id.CompatValue(),
                     space.Number ?? string.Empty,
                     space.Name ?? string.Empty,
                     0,
@@ -341,13 +341,13 @@ internal static class ExteriorWallScanner
                     thicknessMm,
                     true,
                     true,
-                    candidate.ElementId.Value.ToString(CultureInfo.InvariantCulture),
+                    candidate.ElementId.CompatValue().ToString(CultureInfo.InvariantCulture),
                     candidate.ElementUniqueId,
                     candidate.IfcGuid,
                     candidate.LinkPath,
                     candidate.GeometryKey);
                 output.Add(new SegmentRow(
-                    space.Id.Value,
+                    space.Id.CompatValue(),
                     space.Number ?? string.Empty,
                     space.Name ?? string.Empty,
                     isExterior ? 0 : match.Face.AdjacentSpaceId,
@@ -452,7 +452,7 @@ internal static class ExteriorWallScanner
                     UnitTypeId.SquareMeters);
                 string levelName = hostDocument.GetElement(space.LevelId)?.Name ?? string.Empty;
                 output.Add(new SegmentRow(
-                    space.Id.Value,
+                    space.Id.CompatValue(),
                     space.Number ?? string.Empty,
                     space.Name ?? string.Empty,
                     face.AdjacentSpaceId,
@@ -613,10 +613,10 @@ internal static class ExteriorWallScanner
                 continue;
             }
             if (loops is null) continue;
-            if (!byLevel.TryGetValue(space.LevelId.Value, out List<BoundaryEdge>? edges))
+            if (!byLevel.TryGetValue(space.LevelId.CompatValue(), out List<BoundaryEdge>? edges))
             {
                 edges = [];
-                byLevel.Add(space.LevelId.Value, edges);
+                byLevel.Add(space.LevelId.CompatValue(), edges);
             }
             foreach (BoundarySegment segment in loops.SelectMany(loop => loop))
             {
@@ -630,7 +630,7 @@ internal static class ExteriorWallScanner
                     if (Distance2D(a, b) < UnitUtils.ConvertToInternalUnits(20.0, UnitTypeId.Millimeters))
                         continue;
                     edges.Add(new BoundaryEdge(
-                        space.Id.Value,
+                        space.Id.CompatValue(),
                         space.Number ?? string.Empty,
                         space.Name ?? string.Empty,
                         new XYZ(a.X, a.Y, 0.0),
@@ -927,7 +927,7 @@ internal static class ExteriorWallScanner
         string key = string.Join("|", parts.Select(item =>
             $"{Normalize(item.Name)}:{Math.Round(item.ThicknessMm, 0).ToString(CultureInfo.InvariantCulture)}"));
         if (key.Length == 0)
-            key = string.Join("|", layers.Select(item => $"{Normalize(item.TypeName)}:{item.ElementId.Value}"));
+            key = string.Join("|", layers.Select(item => $"{Normalize(item.TypeName)}:{item.ElementId.CompatValue()}"));
         IReadOnlyList<LayerPart> recommendedParts = RecommendLayers(parts);
         ExteriorWallLayerItem[] recommendedItems = recommendedParts
             .Select((item, index) => new ExteriorWallLayerItem(
@@ -956,7 +956,7 @@ internal static class ExteriorWallScanner
 
     private static LayerPart AttachSource(LayerPart part, LinkCandidate candidate) => part with
     {
-        SourceElementId = candidate.ElementId.Value.ToString(CultureInfo.InvariantCulture),
+        SourceElementId = candidate.ElementId.CompatValue().ToString(CultureInfo.InvariantCulture),
         SourceUniqueId = candidate.ElementUniqueId,
         SourceIfcGuid = candidate.IfcGuid,
         SourceLinkPath = candidate.LinkPath,
@@ -1176,10 +1176,10 @@ internal static class ExteriorWallScanner
                 rootLinkInstanceId,
                 element.Id,
                 element.UniqueId ?? string.Empty,
-                element.Id.Value.ToString(CultureInfo.InvariantCulture),
+                element.Id.CompatValue().ToString(CultureInfo.InvariantCulture),
                 documentKey,
                 toHost,
-                nestedLinkInstancePath.Select(id => id.Value).ToArray(),
+                nestedLinkInstancePath.Select(id => id.CompatValue()).ToArray(),
                 linkPath,
                 depth,
                 candidateKind,
@@ -1369,7 +1369,7 @@ internal static class ExteriorWallScanner
     private static bool IsWallLike(Document document, Element element, BoundingBoxXYZ bounds)
     {
         if (element.Category is null) return false;
-        long categoryId = element.Category.Id.Value;
+        long categoryId = element.Category.Id.CompatValue();
         if (categoryId == (long)BuiltInCategory.OST_Walls ||
             categoryId == (long)BuiltInCategory.OST_CurtainWallPanels)
             return true;
@@ -1405,7 +1405,7 @@ internal static class ExteriorWallScanner
     private static bool IsWindowLike(Document document, Element element)
     {
         if (element.Category is null) return false;
-        if (element.Category.Id.Value == (long)BuiltInCategory.OST_Windows) return true;
+        if (element.Category.Id.CompatValue() == (long)BuiltInCategory.OST_Windows) return true;
         string typeName = document.GetElement(element.GetTypeId())?.Name ?? string.Empty;
         string identity = string.Join(" ",
             element.Category.Name,
@@ -1429,7 +1429,7 @@ internal static class ExteriorWallScanner
     private static bool IsDoorLike(Document document, Element element)
     {
         if (element.Category is null) return false;
-        if (element.Category.Id.Value == (long)BuiltInCategory.OST_Doors) return true;
+        if (element.Category.Id.CompatValue() == (long)BuiltInCategory.OST_Doors) return true;
         string typeName = document.GetElement(element.GetTypeId())?.Name ?? string.Empty;
         string identity = string.Join(" ",
             element.Category.Name,
@@ -1506,7 +1506,7 @@ internal static class ExteriorWallScanner
                 .Select(point => toHost.OfPoint(point))
                 .ToArray();
             if (corners.Count == 0) continue;
-            string key = $"IMPORT:{importInstance.Id.Value}:{shapeIndex++}";
+            string key = $"IMPORT:{importInstance.Id.CompatValue()}:{shapeIndex++}";
             output.Add(new LinkCandidate(
                 rootLinkInstanceId,
                 importInstance.Id,
@@ -1514,7 +1514,7 @@ internal static class ExteriorWallScanner
                 key,
                 documentKey,
                 toHost,
-                nestedLinkInstancePath.Select(id => id.Value).ToArray(),
+                nestedLinkInstancePath.Select(id => id.CompatValue()).ToArray(),
                 linkPath,
                 depth,
                 "WALL",
@@ -1934,8 +1934,8 @@ internal static class ExteriorWallScanner
         bool direct,
         BoundingBoxXYZ bounds) =>
         new(
-            rootLinkId.Value,
-            linkedElementId.Value,
+            rootLinkId.CompatValue(),
+            linkedElementId.CompatValue(),
             linkPath,
             sourceDocumentPath,
             sourceToHost,
@@ -2040,7 +2040,7 @@ internal static class ExteriorWallScanner
         double MinZ,
         double MaxZ)
     {
-        internal string UniqueKey => $"{RootLinkInstanceId.Value}|{DocumentKey}|{ElementId.Value}|{GeometryKey}";
+        internal string UniqueKey => $"{RootLinkInstanceId.CompatValue()}|{DocumentKey}|{ElementId.CompatValue()}|{GeometryKey}";
     }
 
     private sealed record ImportedShape(BoundingBoxXYZ Bounds, string Identity);

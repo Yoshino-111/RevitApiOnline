@@ -3,7 +3,7 @@
     <RevitVersion Condition="'$(RevitVersion)' == ''">2025</RevitVersion>
     <TargetFramework Condition="'$(RevitVersion)' == '2020' Or '$(RevitVersion)' == '2021' Or '$(RevitVersion)' == '2022' Or '$(RevitVersion)' == '2023' Or '$(RevitVersion)' == '2024'">net48</TargetFramework>
     <TargetFramework Condition="'$(RevitVersion)' == '2025' Or '$(RevitVersion)' == '2026'">net8.0-windows10.0.17763.0</TargetFramework>
-    <TargetFramework Condition="'$(RevitVersion)' == '2027'">net10.0-windows10.0.17763.0</TargetFramework>
+    <TargetFramework Condition="'$(RevitVersion)' == '2027'">net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>12</LangVersion>

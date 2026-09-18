@@ -531,7 +531,7 @@ internal sealed class SprinklerModelerController : IDisposable
                 .OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
                 .Select(item => new ElevationReferenceOption(
                     item.Id,
-                    $"{item.Name}  ·  Id {item.Id.Value}",
+                    $"{item.Name}  ·  Id {item.Id.CompatValue()}",
                     false)));
         }
         else if (mode == ElevationModeCeiling)
@@ -551,7 +551,7 @@ internal sealed class SprinklerModelerController : IDisposable
                 .OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
                 .Select(item => new ElevationReferenceOption(
                     item.Id,
-                    $"{item.Name}  ·  Id {item.Id.Value}",
+                    $"{item.Name}  ·  Id {item.Id.CompatValue()}",
                     false)));
         }
         else if (mode == ElevationModeReferencePlane)
@@ -568,7 +568,7 @@ internal sealed class SprinklerModelerController : IDisposable
                 .OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
                 .Select(item => new ElevationReferenceOption(
                     item.Id,
-                    $"{item.Name}  ·  Id {item.Id.Value}",
+                    $"{item.Name}  ·  Id {item.Id.CompatValue()}",
                     false)));
         }
         else
@@ -820,8 +820,8 @@ internal sealed class SprinklerModelerController : IDisposable
                 for (int offsetY = -1; offsetY <= 1; offsetY++)
                 for (int offsetX = -1; offsetX <= 1; offsetX++)
                 {
-                    int x = Math.Clamp(centerX + offsetX, 0, _cadPreviewPixelWidth - 1);
-                    int y = Math.Clamp(centerY + offsetY, 0, _cadPreviewPixelHeight - 1);
+                    int x = PortableMath.Clamp(centerX + offsetX, 0, _cadPreviewPixelWidth - 1);
+                    int y = PortableMath.Clamp(centerY + offsetY, 0, _cadPreviewPixelHeight - 1);
                     int offset = y * _cadPreviewPixelStride + x * 4;
                     byte blue = _cadPreviewPixels[offset];
                     byte green = _cadPreviewPixels[offset + 1];
@@ -1299,8 +1299,8 @@ internal sealed class SprinklerModelerController : IDisposable
 
     private static System.Windows.Point ClampToCanvas(System.Windows.Point point, Canvas canvas) =>
         new(
-            Math.Clamp(point.X, 0, Math.Max(canvas.Width, 0)),
-            Math.Clamp(point.Y, 0, Math.Max(canvas.Height, 0)));
+            PortableMath.Clamp(point.X, 0, Math.Max(canvas.Width, 0)),
+            PortableMath.Clamp(point.Y, 0, Math.Max(canvas.Height, 0)));
 
     private void ApplyCadColorAreaScan(
         Rect bounds,
@@ -1398,7 +1398,7 @@ internal sealed class SprinklerModelerController : IDisposable
                 .Select(segment => (Segment: segment, Metrics: _vectorScene.GetPathMetrics(segment.Id)))
                 .Where(item => IsSprinklerShapeCandidate(item.Metrics))
                 .OrderByDescending(item => item.Metrics.IsClosed)
-                .ThenBy(item => Math.Abs(Math.Log(Math.Clamp(item.Metrics.AspectRatio, 0.01, 100))))
+                .ThenBy(item => Math.Abs(Math.Log(PortableMath.Clamp(item.Metrics.AspectRatio, 0.01, 100))))
                 .ThenByDescending(item => item.Metrics.SegmentCount)
                 .Select(item => item.Segment.Id)
                 .DefaultIfEmpty(-1)
@@ -1864,9 +1864,9 @@ internal sealed class SprinklerModelerController : IDisposable
         List<IGrouping<CadSymbolKey, CadSprinklerPath>> clusters = candidates
             .GroupBy(item => new CadSymbolKey(
                 (int)Math.Round(item.Color.Hue / 10.0),
-                Math.Clamp(item.SegmentCount / 2, 1, 20),
+                PortableMath.Clamp(item.SegmentCount / 2, 1, 20),
                 (int)Math.Round(Math.Log(Math.Max(item.DiagonalMillimeters, 1.0), 1.35)),
-                (int)Math.Round(Math.Clamp(item.AspectRatio, 0.2, 5.0) * 4.0)))
+                (int)Math.Round(PortableMath.Clamp(item.AspectRatio, 0.2, 5.0) * 4.0)))
             .Where(group => group.Count() >= 2)
             .OrderByDescending(group => group.Sum(item => item.GeometryScore) * Math.Sqrt(group.Count()))
             .ToList();
@@ -1890,7 +1890,7 @@ internal sealed class SprinklerModelerController : IDisposable
     private List<CadTopologyColorGroup> BuildCadTopologyColorGroups(
         IReadOnlyList<int> pipeCandidates,
         IReadOnlyList<CadSprinklerPath> sprinklers,
-        IReadOnlySet<int> doubleLineIds)
+        ISet<int> doubleLineIds)
     {
         if (_vectorScene is null) return [];
         return pipeCandidates
@@ -1931,7 +1931,7 @@ internal sealed class SprinklerModelerController : IDisposable
     private (int[] Main, int[] Branch) SplitSingleColorCadNetwork(
         IReadOnlyList<int> source,
         IReadOnlyList<CadSprinklerPath> sprinklers,
-        IReadOnlySet<int> doubleLineIds)
+        ISet<int> doubleLineIds)
     {
         if (_vectorScene is null || source.Count == 0) return ([], []);
         HashSet<int> available = source.ToHashSet();
@@ -1987,7 +1987,7 @@ internal sealed class SprinklerModelerController : IDisposable
         double x,
         double y,
         int currentId,
-        IReadOnlySet<int> available)
+        ISet<int> available)
     {
         if (_vectorScene is null) return [];
         const double toleranceMillimeters = 40.0;
@@ -2371,8 +2371,8 @@ internal sealed class SprinklerModelerController : IDisposable
                 SourceFile = _currentPdfPath,
                 SavedUtc = DateTime.UtcNow,
                 CadDocumentKey = IsCadSource ? CurrentDocumentKey() : string.Empty,
-                CadImportElementId = IsCadSource ? _alignedPdfInstanceId?.Value : null,
-                CadViewId = IsCadSource ? _scannedPlacementViewId?.Value : null,
+                CadImportElementId = IsCadSource ? _alignedPdfInstanceId?.CompatValue() : null,
+                CadViewId = IsCadSource ? _scannedPlacementViewId?.CompatValue() : null,
                 Items = snapshots,
                 VectorPicks = _vectorPicks.Values
                     .Concat(_additionalVectorPicks.Values.SelectMany(items => items))
@@ -2499,7 +2499,7 @@ internal sealed class SprinklerModelerController : IDisposable
 
     private static string GetMappingSidecarPath(string sourcePath)
     {
-        string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+        string key = PortableApi.ToHexString(PortableApi.HashData(Encoding.UTF8.GetBytes(
             Path.GetFullPath(sourcePath).ToUpperInvariant())))[..16];
         string baseName = Path.GetFileNameWithoutExtension(sourcePath);
         string folder = Path.Combine(
@@ -2564,11 +2564,11 @@ internal sealed class SprinklerModelerController : IDisposable
                 !string.Equals(sidecar.CadDocumentKey, CurrentDocumentKey(), StringComparison.Ordinal) ||
                 sidecar.CadImportElementId is null)
                 return;
-            var rememberedId = new ElementId(sidecar.CadImportElementId.Value);
+            var rememberedId = PortableApi.ElementId(sidecar.CadImportElementId.Value);
             if (_document.GetElement(rememberedId) is not ImportInstance importInstance) return;
             _alignedPdfInstanceId = rememberedId;
             _scannedPlacementViewId = sidecar.CadViewId is long viewId
-                ? new ElementId(viewId)
+                ? PortableApi.ElementId(viewId)
                 : importInstance.OwnerViewId;
             RevitViewOption? rememberedView = _placementViews.FirstOrDefault(option =>
                 option.Id == _scannedPlacementViewId);
@@ -3469,7 +3469,7 @@ internal sealed class SprinklerModelerController : IDisposable
         WpfGrid host = Find<WpfGrid>("v2_layer_pdf_host");
         double pageWidth = image.ActualWidth > 1 ? image.ActualWidth : image.Width;
         double pageHeight = image.ActualHeight > 1 ? image.ActualHeight : image.Height;
-        if (!double.IsFinite(pageWidth) || !double.IsFinite(pageHeight) || pageWidth <= 1 || pageHeight <= 1)
+        if (!PortableMath.IsFinite(pageWidth) || !PortableMath.IsFinite(pageHeight) || pageWidth <= 1 || pageHeight <= 1)
             return false;
 
         // Ask WPF for the image's real on-screen origin. This includes ScrollViewer
@@ -3534,7 +3534,7 @@ internal sealed class SprinklerModelerController : IDisposable
             _vectorScene is null || _selectedVectorSegmentId < 0)
             return;
         int direction = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? -1 : 1;
-        int count = Enum.GetValues<PdfVectorSelectionScope>().Length;
+        int count = Enum.GetValues(typeof(PdfVectorSelectionScope)).Length;
         int next = ((int)_vectorSelectionScope + direction + count) % count;
         _vectorSelectionScope = (PdfVectorSelectionScope)next;
         if (_lastAssignedVectorClass != PdfVectorClass.None &&
@@ -4018,10 +4018,10 @@ internal sealed class SprinklerModelerController : IDisposable
     {
         if (_vectorScene is null) return [];
         var bounds = new Rect(
-            Math.Clamp(snapshot.ScanLeft, 0, 1),
-            Math.Clamp(snapshot.ScanTop, 0, 1),
-            Math.Clamp(snapshot.ScanRight - snapshot.ScanLeft, 0, 1),
-            Math.Clamp(snapshot.ScanBottom - snapshot.ScanTop, 0, 1));
+            PortableMath.Clamp(snapshot.ScanLeft, 0, 1),
+            PortableMath.Clamp(snapshot.ScanTop, 0, 1),
+            PortableMath.Clamp(snapshot.ScanRight - snapshot.ScanLeft, 0, 1),
+            PortableMath.Clamp(snapshot.ScanBottom - snapshot.ScanTop, 0, 1));
         var desiredColor = new CadPixelSignature(
             snapshot.ScanHue,
             snapshot.ScanSaturation,
@@ -4116,7 +4116,7 @@ internal sealed class SprinklerModelerController : IDisposable
 
     private bool IsCollinearFragmentConnected(
         int candidateId,
-        IReadOnlySet<int> accepted,
+        ISet<int> accepted,
         double toleranceMillimeters)
     {
         if (_vectorScene is null) return false;
@@ -4209,7 +4209,7 @@ internal sealed class SprinklerModelerController : IDisposable
         double lengthSquared = direction.X * direction.X + direction.Y * direction.Y;
         if (lengthSquared <= 1e-9) return (point - start).Length;
         Vector fromStart = point - start;
-        double fraction = Math.Clamp(
+        double fraction = PortableMath.Clamp(
             (fromStart.X * direction.X + fromStart.Y * direction.Y) / lengthSquared,
             0,
             1);
@@ -4316,7 +4316,7 @@ internal sealed class SprinklerModelerController : IDisposable
         int segmentId,
         double x,
         double y,
-        IReadOnlySet<int> available)
+        ISet<int> available)
     {
         if (_vectorScene is null) return false;
         const double toleranceMillimeters = 35.0;
@@ -4346,7 +4346,7 @@ internal sealed class SprinklerModelerController : IDisposable
         double lengthSquared = dx * dx + dy * dy;
         if (lengthSquared < 1e-9)
             return Math.Sqrt(Math.Pow(px - x1, 2) + Math.Pow(py - y1, 2));
-        double parameter = Math.Clamp(((px - x1) * dx + (py - y1) * dy) / lengthSquared, 0, 1);
+        double parameter = PortableMath.Clamp(((px - x1) * dx + (py - y1) * dy) / lengthSquared, 0, 1);
         double nearestX = x1 + parameter * dx;
         double nearestY = y1 + parameter * dy;
         return Math.Sqrt(Math.Pow(px - nearestX, 2) + Math.Pow(py - nearestY, 2));
@@ -4493,11 +4493,11 @@ internal sealed class SprinklerModelerController : IDisposable
         // and endpoint direction.
         const double connectionGapMillimeters = 45.0;
         const double minimumSegmentMillimeters = 1.5;
-        double toleranceX = Math.Clamp(
+        double toleranceX = PortableMath.Clamp(
             connectionGapMillimeters / Math.Max(_vectorScene.PageWidth, 1.0),
             0.000015,
             0.0012);
-        double toleranceY = Math.Clamp(
+        double toleranceY = PortableMath.Clamp(
             connectionGapMillimeters / Math.Max(_vectorScene.PageHeight, 1.0),
             0.000015,
             0.0012);
@@ -4638,8 +4638,8 @@ internal sealed class SprinklerModelerController : IDisposable
             for (int offsetY = -1; offsetY <= 1; offsetY++)
             for (int offsetX = -1; offsetX <= 1; offsetX++)
             {
-                int x = Math.Clamp(centerX + offsetX, 0, _cadPreviewPixelWidth - 1);
-                int y = Math.Clamp(centerY + offsetY, 0, _cadPreviewPixelHeight - 1);
+                int x = PortableMath.Clamp(centerX + offsetX, 0, _cadPreviewPixelWidth - 1);
+                int y = PortableMath.Clamp(centerY + offsetY, 0, _cadPreviewPixelHeight - 1);
                 int offset = y * _cadPreviewPixelStride + x * 4;
                 CadPixelSignature pixel = ToCadPixelSignature(
                     _cadPreviewPixels[offset + 2],
@@ -4951,7 +4951,7 @@ internal sealed class SprinklerModelerController : IDisposable
                     double t = (qx * sy - qy * sx) / cross;
                     double u = (qx * dy - qy * dx) / cross;
                     if (t >= -0.0001 && t <= 1.0001 && u >= -0.0001 && u <= 1.0001)
-                        parameters.Add(Math.Clamp(t, 0, 1));
+                        parameters.Add(PortableMath.Clamp(t, 0, 1));
                     continue;
                 }
 
@@ -5133,7 +5133,7 @@ internal sealed class SprinklerModelerController : IDisposable
         }
 
         var active = new bool[branches.Length];
-        Array.Fill(active, true);
+        PortableApi.Fill(active, true);
         bool removed;
         do
         {
@@ -5181,7 +5181,7 @@ internal sealed class SprinklerModelerController : IDisposable
         double lengthSquared = dx * dx + dy * dy;
         if (lengthSquared < 0.000001)
             return Distance2D(x, y, run.X1, run.Y1);
-        double parameter = Math.Clamp(
+        double parameter = PortableMath.Clamp(
             ((x - run.X1) * dx + (y - run.Y1) * dy) / lengthSquared,
             0,
             1);
@@ -6095,11 +6095,9 @@ internal sealed class SprinklerModelerController : IDisposable
                     ImageType? imageType = FindPdfImageType(document, pdfPath);
                     if (imageType is null)
                     {
-                        using var options = new ImageTypeOptions(pdfPath, false, ImageTypeSource.Import)
-                        {
-                            PageNumber = 1,
-                            Resolution = 300
-                        };
+                        using var options = PortableApi.ImageOptions(pdfPath);
+                        options.PageNumber = 1;
+                        options.Resolution = 300;
                         imageType = ImageType.Create(document, options);
                     }
 
@@ -6397,6 +6395,28 @@ internal sealed class SprinklerModelerController : IDisposable
         _ => ImportUnit.Millimeter
     };
 
+#if REVIT2020
+    private static DisplayUnitType CadUnitTypeIdFromName(string unitName) => unitName switch
+    {
+        "Meters" => DisplayUnitType.DUT_METERS,
+        "Centimeters" => DisplayUnitType.DUT_CENTIMETERS,
+        "Inches" => DisplayUnitType.DUT_DECIMAL_INCHES,
+        "Feet" => DisplayUnitType.DUT_DECIMAL_FEET,
+        _ => DisplayUnitType.DUT_MILLIMETERS
+    };
+
+    private static double CadScaleRelativeToProjectUnits(Document document, string unitName)
+    {
+        DisplayUnitType drawingUnit = CadUnitTypeIdFromName(unitName);
+        DisplayUnitType projectUnit = document.GetUnits()
+            .GetFormatOptions(UnitType.UT_Length)
+            .DisplayUnits;
+        double drawingUnitInFeet = UnitUtils.ConvertToInternalUnits(1.0, drawingUnit);
+        double projectUnitInFeet = UnitUtils.ConvertToInternalUnits(1.0, projectUnit);
+        return drawingUnitInFeet / Math.Max(projectUnitInFeet, 1e-12);
+    }
+
+#else
     private static ForgeTypeId CadUnitTypeIdFromName(string unitName) => unitName switch
     {
         "Meters" => UnitTypeId.Meters,
@@ -6417,6 +6437,7 @@ internal sealed class SprinklerModelerController : IDisposable
         return drawingUnitInFeet / Math.Max(projectUnitInFeet, 1e-12);
     }
 
+#endif
     private static bool TryReadPositiveScaleFactor(string text, out double value)
     {
         bool parsed = double.TryParse(
@@ -6429,7 +6450,7 @@ internal sealed class SprinklerModelerController : IDisposable
                           NumberStyles.Float,
                           CultureInfo.InvariantCulture,
                           out value);
-        return parsed && double.IsFinite(value) && value > 0;
+        return parsed && PortableMath.IsFinite(value) && value > 0;
     }
 
     private void CaptureAlignedCadPosition()
@@ -6963,7 +6984,7 @@ internal sealed class SprinklerModelerController : IDisposable
             ?? throw new InvalidOperationException($"Target level '{targetLevelName}' was not found.");
         FamilySymbol symbol = document.GetElement(familySymbolId) as FamilySymbol
             ?? throw new InvalidOperationException("The selected Sprinkler Family / Type is no longer available.");
-        if (symbol.Category?.Id.Value != (long)BuiltInCategory.OST_Sprinklers)
+        if (symbol.Category?.Id.CompatValue() != (long)BuiltInCategory.OST_Sprinklers)
             throw new InvalidOperationException("The selected Family / Type is not in the Revit Sprinklers category.");
         result.FamilyType = $"{symbol.Family.Name} : {symbol.Name}";
         PipeType pipeType = document.GetElement(pipeTypeId) as PipeType
@@ -7607,7 +7628,7 @@ internal sealed class SprinklerModelerController : IDisposable
 
             foreach (int sourceEndIndex in new[] { 0, 1 })
             {
-                if (!processedEnds.Add((sourcePipeId.Value, sourceEndIndex))) continue;
+                if (!processedEnds.Add((sourcePipeId.CompatValue(), sourceEndIndex))) continue;
                 sourcePipe = document.GetElement(sourcePipeId) as Pipe;
                 if (sourcePipe?.Location is not LocationCurve currentSourceLocation ||
                     currentSourceLocation.Curve is not Line currentSourceLine)
@@ -7739,7 +7760,7 @@ internal sealed class SprinklerModelerController : IDisposable
         double parameter = lengthSquared < 1e-12
             ? 0
             : ((point.X - start.X) * dx + (point.Y - start.Y) * dy) / lengthSquared;
-        parameter = Math.Clamp(parameter, 0, 1);
+        parameter = PortableMath.Clamp(parameter, 0, 1);
         XYZ projected = new(
             start.X + parameter * dx,
             start.Y + parameter * dy,
@@ -9308,9 +9329,9 @@ internal sealed class SprinklerModelerController : IDisposable
             _ => (chroma, 0, x)
         };
         return WpfColor.FromRgb(
-            (byte)Math.Clamp(Math.Round((rgb.R + m) * 255), 0, 255),
-            (byte)Math.Clamp(Math.Round((rgb.G + m) * 255), 0, 255),
-            (byte)Math.Clamp(Math.Round((rgb.B + m) * 255), 0, 255));
+            (byte)PortableMath.Clamp(Math.Round((rgb.R + m) * 255), 0, 255),
+            (byte)PortableMath.Clamp(Math.Round((rgb.G + m) * 255), 0, 255),
+            (byte)PortableMath.Clamp(Math.Round((rgb.B + m) * 255), 0, 255));
     }
 
     private static SolidColorBrush Brush(string hex) =>

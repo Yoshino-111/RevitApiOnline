@@ -12,7 +12,14 @@ public sealed class DrainConnectionCommand : IExternalCommand
     {
         try
         {
+#if REVIT2020
+            return LegacyDrainHotReloadManager.ReloadAndExecute(
+                commandData,
+                ref message,
+                elements);
+#else
             return Application.DrainConnectionPlugin.Execute(commandData, ref message, elements);
+#endif
         }
         catch (Exception exception)
         {
@@ -22,4 +29,3 @@ public sealed class DrainConnectionCommand : IExternalCommand
         }
     }
 }
-

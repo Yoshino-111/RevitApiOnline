@@ -1255,7 +1255,7 @@ internal sealed class FamilyManagerController : IDisposable
 #if NET48
         viewer.ScrollToVerticalOffset(FrameworkCompat.Clamp(viewer.VerticalOffset - (steps * 78d), 0, viewer.ScrollableHeight));
 #else
-        viewer.ScrollToVerticalOffset(Math.Clamp(viewer.VerticalOffset - (steps * 78d), 0, viewer.ScrollableHeight));
+        viewer.ScrollToVerticalOffset(PortableMath.Clamp(viewer.VerticalOffset - (steps * 78d), 0, viewer.ScrollableHeight));
 #endif
         eventArgs.Handled = true;
     }

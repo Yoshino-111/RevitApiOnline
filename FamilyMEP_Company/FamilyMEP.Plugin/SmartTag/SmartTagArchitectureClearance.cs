@@ -44,8 +44,8 @@ internal static class SmartTagArchitectureClearance
         double maximumShiftV = Math.Max(
             stepV * 6.0,
             settings.ColumnWidth * 0.25);
-        int levelsU = Math.Clamp((int)Math.Ceiling(maximumShiftU / stepU), 1, 12);
-        int levelsV = Math.Clamp((int)Math.Ceiling(maximumShiftV / stepV), 1, 8);
+        int levelsU = PortableMath.Clamp((int)Math.Ceiling(maximumShiftU / stepU), 1, 12);
+        int levelsV = PortableMath.Clamp((int)Math.Ceiling(maximumShiftV / stepV), 1, 8);
 
         LayoutPoint zero = new(0.0, 0.0);
         ClusterQuality baseline = Measure(zero);

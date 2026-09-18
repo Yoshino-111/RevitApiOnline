@@ -1456,7 +1456,7 @@ internal static class TroxRfdBuilderService
         double startX = CurrentValue(manager, start, Mm(108));
         double endX = CurrentValue(manager, end, Mm(156));
         double outerR = Math.Max(outerD / 2, Mm(2));
-        double innerR = Math.Clamp(innerD / 2, Mm(.5), outerR - Mm(.5));
+        double innerR = PortableMath.Clamp(innerD / 2, Mm(.5), outerR - Mm(.5));
         if (endX <= startX + Mm(.5))
             endX = startX + Mm(48);
 
@@ -1806,7 +1806,7 @@ internal static class TroxRfdBuilderService
         double outerD = CurrentValue(manager, outerDiameter, Mm(125));
         double innerD = CurrentValue(manager, innerDiameter, Mm(122));
         double outerR = Math.Max(outerD / 2, Mm(2));
-        double innerR = Math.Clamp(innerD / 2, Mm(.5), outerR - Mm(.5));
+        double innerR = PortableMath.Clamp(innerD / 2, Mm(.5), outerR - Mm(.5));
         var outer = CircleProfile(outerR);
         var inner = CircleProfile(innerR);
         var profile = new CurveArrArray();
@@ -2359,8 +2359,13 @@ internal static class TroxRfdBuilderService
         return existing
             ?? manager.AddParameter(
                  name,
+#if REVIT2020 || REVIT2021 || REVIT2022
+                 BuiltInParameterGroup.PG_GEOMETRY,
+                 ParameterType.Length,
+#else
                  GroupTypeId.Geometry,
                  SpecTypeId.Length,
+#endif
                  isInstance);
     }
 

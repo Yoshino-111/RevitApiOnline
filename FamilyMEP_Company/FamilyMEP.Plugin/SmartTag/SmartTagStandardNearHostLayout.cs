@@ -1496,7 +1496,7 @@ internal static class SmartTagStandardNearHostLayout
                 double laneStep = Math.Max(settings.Clearance * 2.1, 0.01);
                 double laneDelta = lane == 0 ? 0 : ((lane + 1) / 2) * laneStep * (lane % 2 == 1 ? -1 : 1);
                 end = CreateHostEnd(tag, candidateV, usesElbow, settings);
-                double laneU = Math.Clamp(end.U + laneDelta, tag.ElementBounds.MinU, tag.ElementBounds.MaxU);
+                double laneU = PortableMath.Clamp(end.U + laneDelta, tag.ElementBounds.MinU, tag.ElementBounds.MaxU);
                 end = end with { U = laneU };
                 var elbow = new LayoutPoint(end.U, candidateV);
                 var edge = new LayoutPoint(settings.PlaceLeft ? tagBounds.MaxU : tagBounds.MinU, candidateV);
@@ -1640,7 +1640,7 @@ internal static class SmartTagStandardNearHostLayout
             maximumShift = Math.Min(maximumShift, top - halfHeight - centers[index]);
         }
         double shift = minimumShift <= maximumShift
-            ? Math.Clamp(0.0, minimumShift, maximumShift)
+            ? PortableMath.Clamp(0.0, minimumShift, maximumShift)
             : 0.0;
 
         return Enumerable.Range(0, count).ToDictionary(
@@ -1659,7 +1659,7 @@ internal static class SmartTagStandardNearHostLayout
         // clamp for every feasible view; for an impossible range, use the unique
         // minimax center and let the existing clash flag report the overflow.
         return minimum <= maximum
-            ? Math.Clamp(value, minimum, maximum)
+            ? PortableMath.Clamp(value, minimum, maximum)
             : (minimum + maximum) * 0.5;
     }
 
@@ -1797,7 +1797,7 @@ internal static class SmartTagStandardNearHostLayout
         }
         double parameter = ((point.U - segment.Start.U) * du +
                             (point.V - segment.Start.V) * dv) / lengthSquared;
-        parameter = Math.Clamp(parameter, 0.0, 1.0);
+        parameter = PortableMath.Clamp(parameter, 0.0, 1.0);
         double nearestU = segment.Start.U + parameter * du;
         double nearestV = segment.Start.V + parameter * dv;
         return Math.Sqrt(Math.Pow(point.U - nearestU, 2) + Math.Pow(point.V - nearestV, 2));

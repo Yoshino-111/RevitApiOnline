@@ -16,6 +16,9 @@ public sealed class Application : IExternalApplication
     internal static FamilyMEP.Plugin.SprinklerModelerPlugin SprinklerModelerPlugin { get; } = new();
     internal static FamilyMEP.Plugin.SmartTagPlugin SmartTagPlugin { get; } = new();
 
+    internal static FamilyMEP.Plugin.UnifiedFamilyCreatorPlugin FamilyCreatorPlugin { get; } = new();
+    internal static FamilyMEP.Plugin.ExteriorWallMapperPlugin ExteriorWallMapperPlugin { get; } = new();
+
     public Result OnStartup(UIControlledApplication application)
     {
         const string tabName = "FamilyMEP";
@@ -33,26 +36,22 @@ public sealed class Application : IExternalApplication
             ?? application.CreateRibbonPanel(tabName, "Family Tools");
 
         string assemblyPath = Assembly.GetExecutingAssembly().Location;
-        var valveButton = new PushButtonData(
-            "FamilyMEP_ValveBuilder",
-            "Ball\nFamily",
-            assemblyPath,
-            typeof(ValveBuilderCommand).FullName)
+        panel.AddItem(new PushButtonData(
+            "FamilyMEP_UnifiedFamilyCreator", "Family\nCreator", assemblyPath,
+            typeof(FamilyCreatorCommand).FullName)
         {
-            ToolTip = "Create parametric threaded ball-valve families."
-        };
-        panel.AddItem(valveButton);
+            ToolTip = "Create parametric MEP families."
+        });
 
-        var gateValveButton = new PushButtonData(
-            "FamilyMEP_GateValveBuilder",
-            "Gate\nFamily",
-            assemblyPath,
-            typeof(GateValveBuilderCommand).FullName)
+        RibbonPanel buildingPanel = application.GetRibbonPanels(tabName)
+            .FirstOrDefault(item => item.Name == "Building Analysis")
+            ?? application.CreateRibbonPanel(tabName, "Building Analysis");
+        buildingPanel.AddItem(new PushButtonData(
+            "FamilyMEP_ExteriorWallMapper", "Exterior Wall\nMapper", assemblyPath,
+            typeof(ExteriorWallMapperCommand).FullName)
         {
-            ToolTip = "Create manufacturer-authored threaded gate-valve families."
-        };
-        panel.AddItem(gateValveButton);
-
+            ToolTip = "Map exterior walls and review results."
+        });
         RibbonPanel drainagePanel = application.GetRibbonPanels(tabName)
             .FirstOrDefault(item => item.Name == "Drainage Tools")
             ?? application.CreateRibbonPanel(tabName, "Drainage Tools");
@@ -113,6 +112,11 @@ public sealed class Application : IExternalApplication
 
         try
         {
+#if REVIT2020
+            LegacyDrainHotReloadManager.Shutdown();
+#endif
+            FamilyCreatorPlugin.Shutdown();
+            ExteriorWallMapperPlugin.Shutdown();
             Plugin.Shutdown();
             ValveBuilderPlugin.Shutdown();
             GateValveBuilderPlugin.Shutdown();

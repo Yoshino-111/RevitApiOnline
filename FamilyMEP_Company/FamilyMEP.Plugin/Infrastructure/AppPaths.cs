@@ -120,6 +120,23 @@ internal static class AppPaths
         }
         if (IsDriveF(configured)) return Path.GetFullPath(configured!);
 
+        // Assembly.Location is empty when the Revit 2020 Drain plugin is loaded
+        // from bytes. The hot loader publishes its source folder explicitly so
+        // diagnostics and shared data still resolve beside the development build.
+        string? hotReloadSource = AppDomain.CurrentDomain.GetData(
+            "FamilyMEP.HotReloadSourceFolder") as string;
+        if (!string.IsNullOrWhiteSpace(hotReloadSource))
+        {
+            DirectoryInfo? hotCursor = new DirectoryInfo(hotReloadSource);
+            for (int depth = 0; hotCursor is not null && depth < 6;
+                 depth++, hotCursor = hotCursor.Parent)
+            {
+                string developmentData = Path.Combine(hotCursor.FullName, "familymep-data");
+                if (Directory.Exists(developmentData) && IsDriveF(developmentData))
+                    return developmentData;
+            }
+        }
+
         string assemblyFolder = Path.GetDirectoryName(typeof(AppPaths).Assembly.Location) ?? string.Empty;
         DirectoryInfo? cursor = string.IsNullOrWhiteSpace(assemblyFolder) ? null : new DirectoryInfo(assemblyFolder);
         for (int depth = 0; cursor is not null && depth < 6; depth++, cursor = cursor.Parent)

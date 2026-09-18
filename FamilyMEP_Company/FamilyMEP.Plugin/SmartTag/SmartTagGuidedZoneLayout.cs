@@ -300,7 +300,7 @@ internal static class SmartTagGuidedZoneLayout
             .Take(10)
             .ToArray();
         double[] right = rightEnds
-            .Select(value => Math.Clamp(
+            .Select(value => PortableMath.Clamp(
                 value,
                 Math.Min(frame.MaxU, frame.MinU + columnZoneWidth),
                 frame.MaxU))
@@ -373,7 +373,7 @@ internal static class SmartTagGuidedZoneLayout
     }
 
     private static double ClampStart(double value, double size, double minimum, double maximum) =>
-        Math.Clamp(value, minimum, Math.Max(minimum, maximum - size));
+        PortableMath.Clamp(value, minimum, Math.Max(minimum, maximum - size));
 
     private static double QuickCandidateScore(
         LayoutRect zone,
@@ -772,7 +772,7 @@ internal static class SmartTagGuidedZoneLayout
         double rightRail = usable.MaxU - maximumWidth;
         int minimumLeft = Math.Max(0, ordered.Count - rowCapacity);
         int maximumLeft = Math.Min(rowCapacity, ordered.Count);
-        int desiredLeft = Math.Clamp((ordered.Count + 1) / 2, minimumLeft, maximumLeft);
+        int desiredLeft = PortableMath.Clamp((ordered.Count + 1) / 2, minimumLeft, maximumLeft);
 
         // Rank by actual horizontal travel, then take a capacity-safe quota.
         // This preserves nearest-side intent without allowing Auto to collapse
@@ -1239,8 +1239,8 @@ internal static class SmartTagGuidedZoneLayout
             foreach (LayoutObstacle obstacle in obstacles)
             {
                 LayoutRect blocked = obstacle.Bounds.Expand(settings.Clearance);
-                railCandidates.Add(Math.Clamp(blocked.MinU - maximumWidth, minLeft, maxLeft));
-                railCandidates.Add(Math.Clamp(blocked.MaxU, minLeft, maxLeft));
+                railCandidates.Add(PortableMath.Clamp(blocked.MinU - maximumWidth, minLeft, maxLeft));
+                railCandidates.Add(PortableMath.Clamp(blocked.MaxU, minLeft, maxLeft));
             }
 
             int currentScore = ColumnCollisionScore(
@@ -1374,28 +1374,28 @@ internal static class SmartTagGuidedZoneLayout
         {
             minV = maxV = (tag.ElementBounds.MinV + tag.ElementBounds.MaxV) * 0.5;
         }
-        double rowOnHost = Math.Clamp(row, minV, maxV);
+        double rowOnHost = PortableMath.Clamp(row, minV, maxV);
 
         // First try moving only the host end vertically. This often preserves
         // one exact horizontal leader while separating two coincident ends.
         yield return new LayoutPoint(
-            Math.Clamp(tag.Anchor.U, minU, maxU),
+            PortableMath.Clamp(tag.Anchor.U, minU, maxU),
             rowOnHost);
         for (int lane = 1; lane <= 6; lane++)
         {
             double delta = lane * step;
             yield return new LayoutPoint(
-                Math.Clamp(tag.Anchor.U - delta, minU, maxU),
+                PortableMath.Clamp(tag.Anchor.U - delta, minU, maxU),
                 rowOnHost);
             yield return new LayoutPoint(
-                Math.Clamp(tag.Anchor.U + delta, minU, maxU),
+                PortableMath.Clamp(tag.Anchor.U + delta, minU, maxU),
                 rowOnHost);
             yield return new LayoutPoint(
-                Math.Clamp(tag.Anchor.U - delta, minU, maxU),
-                Math.Clamp(tag.Anchor.V - delta, minV, maxV));
+                PortableMath.Clamp(tag.Anchor.U - delta, minU, maxU),
+                PortableMath.Clamp(tag.Anchor.V - delta, minV, maxV));
             yield return new LayoutPoint(
-                Math.Clamp(tag.Anchor.U + delta, minU, maxU),
-                Math.Clamp(tag.Anchor.V + delta, minV, maxV));
+                PortableMath.Clamp(tag.Anchor.U + delta, minU, maxU),
+                PortableMath.Clamp(tag.Anchor.V + delta, minV, maxV));
         }
     }
 

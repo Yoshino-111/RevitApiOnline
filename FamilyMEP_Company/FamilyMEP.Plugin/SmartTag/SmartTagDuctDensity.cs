@@ -14,7 +14,7 @@ internal static class SmartTagDuctDensity
 {
     internal const int MaximumTagsPerZone = 10;
 
-    internal static IReadOnlySet<long> Select(
+    internal static ISet<long> Select(
         IReadOnlyList<DuctDensityCandidate> source,
         LayoutRect sampleZone,
         int maximumPerZone = MaximumTagsPerZone)

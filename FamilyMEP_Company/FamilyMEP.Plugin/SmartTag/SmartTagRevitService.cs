@@ -136,7 +136,7 @@ internal static class SmartTagRevitService
 
     public static SmartTagViewSnapshot CaptureActiveView(
         UIApplication application,
-        IReadOnlySet<long>? elementFilter = null,
+        ISet<long>? elementFilter = null,
         bool fastGuidedCapture = false)
     {
         UIDocument uidoc = application.ActiveUIDocument
@@ -191,7 +191,7 @@ internal static class SmartTagRevitService
             includeArchitecture: !fastGuidedCapture,
             knownMepBounds: knownMepBounds);
         return new SmartTagViewSnapshot(
-            view.Id.Value,
+            view.Id.CompatValue(),
             view.Name,
             Math.Max(1, view.Scale),
             right,
@@ -207,7 +207,7 @@ internal static class SmartTagRevitService
 
     public static SmartTagViewSnapshot? PickElementsAndCapture(
         UIApplication application,
-        IReadOnlySet<string> selectedCategoryKeys,
+        ISet<string> selectedCategoryKeys,
         bool fastGuidedCapture = false)
     {
         UIDocument uidoc = application.ActiveUIDocument
@@ -225,7 +225,7 @@ internal static class SmartTagRevitService
             HashSet<long> elementIds = picked
                 .Where(element => Classify(element) is SupportedCategory category &&
                                   selectedCategoryKeys.Contains(category.Key))
-                .Select(element => element.Id.Value)
+                .Select(element => element.Id.CompatValue())
                 .ToHashSet();
             if (elementIds.Count == 0)
             {
@@ -343,7 +343,7 @@ internal static class SmartTagRevitService
             .Select(document.GetElement)
             .Where(element => element is not null)
             .Select(element => element!)
-            .GroupBy(element => element.Id.Value)
+            .GroupBy(element => element.Id.CompatValue())
             .Select(group => group.First())
             .ToList();
         if (selectedElements.Count == 0)
@@ -384,7 +384,7 @@ internal static class SmartTagRevitService
             throw new InvalidOperationException(
                 "The AVOID scan rectangle did not touch any tag text or leader line.");
         HashSet<long> selectedTagIds = selectedTags
-            .Select(tag => tag.Id.Value)
+            .Select(tag => tag.Id.CompatValue())
             .ToHashSet();
         Dictionary<long, LayoutRect> tagBounds = MeasureTagTextBounds(
             document,
@@ -405,15 +405,15 @@ internal static class SmartTagRevitService
         double clearance = Math.Max(0.0, clearancePaperMillimeters) *
                            Math.Max(1, view.Scale) / 304.8;
         List<IndependentTag> clashingTags = selectedTags
-            .Where(tag => tagBounds.TryGetValue(tag.Id.Value, out LayoutRect bounds) &&
+            .Where(tag => tagBounds.TryGetValue(tag.Id.CompatValue(), out LayoutRect bounds) &&
                           obstacleBounds.Any(obstacle =>
                               bounds.Intersects(obstacle.Expand(clearance))))
             .OrderByDescending(tag =>
-                (tagBounds[tag.Id.Value].MinV + tagBounds[tag.Id.Value].MaxV) * 0.5)
+                (tagBounds[tag.Id.CompatValue()].MinV + tagBounds[tag.Id.CompatValue()].MaxV) * 0.5)
             .ToList();
         Dictionary<long, LayoutRect> originalSelectedBounds = selectedTags
-            .Where(tag => tagBounds.ContainsKey(tag.Id.Value))
-            .ToDictionary(tag => tag.Id.Value, tag => tagBounds[tag.Id.Value]);
+            .Where(tag => tagBounds.ContainsKey(tag.Id.CompatValue()))
+            .ToDictionary(tag => tag.Id.CompatValue(), tag => tagBounds[tag.Id.CompatValue()]);
         int moved = 0;
         var movedIds = new List<ElementId>();
         using (var transaction = new Transaction(
@@ -425,12 +425,12 @@ internal static class SmartTagRevitService
             {
                 if (tag.Pinned)
                 {
-                    warnings.Add($"Tag {tag.Id.Value} is pinned and was skipped.");
+                    warnings.Add($"Tag {tag.Id.CompatValue()} is pinned and was skipped.");
                     continue;
                 }
-                LayoutRect current = tagBounds[tag.Id.Value];
+                LayoutRect current = tagBounds[tag.Id.CompatValue()];
                 LayoutRect[] reservations = tagBounds
-                    .Where(item => item.Key != tag.Id.Value)
+                    .Where(item => item.Key != tag.Id.CompatValue())
                     .Select(item => item.Value)
                     .ToArray();
                 double? shift = SmartTagManualAvoidance.FindNearestVerticalShift(
@@ -440,14 +440,14 @@ internal static class SmartTagRevitService
                     clearance);
                 if (shift is null)
                 {
-                    warnings.Add($"Tag {tag.Id.Value} has no clear vertical position.");
+                    warnings.Add($"Tag {tag.Id.CompatValue()} has no clear vertical position.");
                     continue;
                 }
                 if (Math.Abs(shift.Value) <= 1e-9) continue;
                 try
                 {
                     tag.TagHeadPosition += up * shift.Value;
-                    tagBounds[tag.Id.Value] = SmartTagManualAvoidance.Shift(
+                    tagBounds[tag.Id.CompatValue()] = SmartTagManualAvoidance.Shift(
                         current,
                         shift.Value);
                     moved++;
@@ -456,7 +456,7 @@ internal static class SmartTagRevitService
                 catch (Exception exception)
                 {
                     warnings.Add(
-                        $"Tag {tag.Id.Value} element-clash move: " +
+                        $"Tag {tag.Id.CompatValue()} element-clash move: " +
                         FriendlyTagError(exception));
                 }
             }
@@ -492,7 +492,7 @@ internal static class SmartTagRevitService
             // This lets AVOID also separate leader lanes inside the selected
             // local group while tags outside the scan remain untouched.
             IndependentTag[] movedTags = selectedTags
-                .Where(tag => !tag.Pinned && selectedTagIds.Contains(tag.Id.Value))
+                .Where(tag => !tag.Pinned && selectedTagIds.Contains(tag.Id.CompatValue()))
                 .ToArray();
             RouteSeparatedOrthogonalLeaders(
                 document,
@@ -548,7 +548,7 @@ internal static class SmartTagRevitService
     {
         IndependentTag[] movable = selectedTags
             .Where(tag => tag.HasLeader && !tag.Pinned)
-            .GroupBy(tag => tag.Id.Value)
+            .GroupBy(tag => tag.Id.CompatValue())
             .Select(group => group.First())
             .ToArray();
         if (movable.Length < 2) return 0;
@@ -574,7 +574,7 @@ internal static class SmartTagRevitService
 
         SmartTagStackRouteInput BuildInput(IndependentTag tag)
         {
-            LayoutRect body = actualBounds[tag.Id.Value];
+            LayoutRect body = actualBounds[tag.Id.CompatValue()];
             LayoutPoint end = TryGetLeaderOrHostAnchor(
                 tag,
                 document,
@@ -586,20 +586,20 @@ internal static class SmartTagRevitService
             LayoutPoint attachment = SmartTagStackRouting
                 .GetVisibleLeaderAttachmentPoint(body, end);
             return new SmartTagStackRouteInput(
-                tag.Id.Value,
+                tag.Id.CompatValue(),
                 body,
                 attachment,
                 end);
         }
 
         SmartTagStackRouteInput[] movableInputs = movable
-            .Where(tag => actualBounds.ContainsKey(tag.Id.Value))
+            .Where(tag => actualBounds.ContainsKey(tag.Id.CompatValue()))
             .Select(BuildInput)
             .ToArray();
         if (movableInputs.Length < 2) return 0;
         SmartTagStackRouteInput[] fixedInputs = selectedTags
             .Where(tag => tag.HasLeader && tag.Pinned &&
-                          actualBounds.ContainsKey(tag.Id.Value))
+                          actualBounds.ContainsKey(tag.Id.CompatValue()))
             .Select(BuildInput)
             .ToArray();
         double[] rows = movableInputs
@@ -616,7 +616,7 @@ internal static class SmartTagRevitService
                 fixedInputs,
                 routeClearance);
         Dictionary<long, IndependentTag> tagsById = movable
-            .ToDictionary(tag => tag.Id.Value);
+            .ToDictionary(tag => tag.Id.CompatValue());
         for (int index = 0; index < plan.OrderedKeys.Count; index++)
         {
             long key = plan.OrderedKeys[index];
@@ -670,11 +670,11 @@ internal static class SmartTagRevitService
             reportAdjustments: false);
         foreach (IndependentTag tag in movable)
         {
-            if (!movedBounds.TryGetValue(tag.Id.Value, out LayoutRect body)) continue;
+            if (!movedBounds.TryGetValue(tag.Id.CompatValue(), out LayoutRect body)) continue;
             foreach ((long key, LayoutRect value) in movedBounds)
                 allTagBounds[key] = value;
             LayoutRect[] reservations = allTagBounds
-                .Where(item => item.Key != tag.Id.Value)
+                .Where(item => item.Key != tag.Id.CompatValue())
                 .Select(item => item.Value)
                 .ToArray();
             double? repair = SmartTagManualAvoidance.FindNearestVerticalShift(
@@ -687,13 +687,13 @@ internal static class SmartTagRevitService
             {
                 tag.TagHeadPosition += up * repair.Value;
                 LayoutRect repaired = SmartTagManualAvoidance.Shift(body, repair.Value);
-                movedBounds[tag.Id.Value] = repaired;
-                allTagBounds[tag.Id.Value] = repaired;
+                movedBounds[tag.Id.CompatValue()] = repaired;
+                allTagBounds[tag.Id.CompatValue()] = repaired;
             }
             catch (Exception exception)
             {
                 warnings.Add(
-                    $"Tag {tag.Id.Value} post-route clash repair: " +
+                    $"Tag {tag.Id.CompatValue()} post-route clash repair: " +
                     FriendlyTagError(exception));
             }
         }
@@ -714,7 +714,7 @@ internal static class SmartTagRevitService
     {
         IndependentTag[] movable = selectedTags
             .Where(tag => !tag.Pinned)
-            .GroupBy(tag => tag.Id.Value)
+            .GroupBy(tag => tag.Id.CompatValue())
             .Select(group => group.First())
             .ToArray();
         if (movable.Length == 0) return;
@@ -737,10 +737,10 @@ internal static class SmartTagRevitService
             reportAdjustments: false);
 
         var items = movable
-            .Where(tag => bounds.ContainsKey(tag.Id.Value))
+            .Where(tag => bounds.ContainsKey(tag.Id.CompatValue()))
             .Select(tag =>
             {
-                LayoutRect body = bounds[tag.Id.Value];
+                LayoutRect body = bounds[tag.Id.CompatValue()];
                 LayoutPoint insertion = Project(tag.TagHeadPosition, right, up);
                 LayoutPoint anchor = TryGetLeaderOrHostAnchor(
                     tag,
@@ -756,7 +756,7 @@ internal static class SmartTagRevitService
                     anchor,
                     tag.HasLeader);
                 LayoutRect original = originalSelectedBounds.TryGetValue(
-                    tag.Id.Value,
+                    tag.Id.CompatValue(),
                     out LayoutRect originalBody)
                         ? originalBody
                         : body;
@@ -816,13 +816,13 @@ internal static class SmartTagRevitService
                     item.Bounds,
                     shiftU,
                     desiredCenterV - currentCenterV);
-                desiredBounds[item.Tag.Id.Value] = desired;
+                desiredBounds[item.Tag.Id.CompatValue()] = desired;
                 nextTop = desired.MinV - safeGap;
             }
         }
 
         HashSet<long> selectedIds = movable
-            .Select(tag => tag.Id.Value)
+            .Select(tag => tag.Id.CompatValue())
             .ToHashSet();
         List<LayoutRect> fixedReservations = allTagBounds
             .Where(item => !selectedIds.Contains(item.Key))
@@ -831,7 +831,7 @@ internal static class SmartTagRevitService
         foreach (var cluster in clusters)
         {
             LayoutRect[] groupBodies = cluster
-                .Select(item => desiredBounds[item.Tag.Id.Value])
+                .Select(item => desiredBounds[item.Tag.Id.CompatValue()])
                 .ToArray();
             LayoutRect groupEnvelope = new(
                 groupBodies.Min(body => body.MinU),
@@ -851,16 +851,16 @@ internal static class SmartTagRevitService
             foreach (var item in cluster)
             {
                 LayoutRect desired = SmartTagManualAvoidance.Shift(
-                    desiredBounds[item.Tag.Id.Value],
+                    desiredBounds[item.Tag.Id.CompatValue()],
                     shiftV);
-                desiredBounds[item.Tag.Id.Value] = desired;
+                desiredBounds[item.Tag.Id.CompatValue()] = desired;
                 fixedReservations.Add(desired);
             }
         }
 
         foreach (var item in items)
         {
-            LayoutRect desired = desiredBounds[item.Tag.Id.Value];
+            LayoutRect desired = desiredBounds[item.Tag.Id.CompatValue()];
             double desiredCenterV = (desired.MinV + desired.MaxV) * 0.5;
             double currentCenterV =
                 (item.Bounds.MinV + item.Bounds.MaxV) * 0.5;
@@ -869,12 +869,12 @@ internal static class SmartTagRevitService
                 item.Tag.TagHeadPosition +=
                     right * (commonLeftEdge - item.LeftEdge) +
                     up * (desiredCenterV - currentCenterV);
-                allTagBounds[item.Tag.Id.Value] = desired;
+                allTagBounds[item.Tag.Id.CompatValue()] = desired;
             }
             catch (Exception exception)
             {
                 warnings.Add(
-                    $"Tag {item.Tag.Id.Value} AVOID cluster alignment: " +
+                    $"Tag {item.Tag.Id.CompatValue()} AVOID cluster alignment: " +
                     FriendlyTagError(exception));
             }
         }
@@ -903,10 +903,10 @@ internal static class SmartTagRevitService
             foreach (var item in items)
             {
                 if (!actualBounds.TryGetValue(
-                        item.Tag.Id.Value,
+                        item.Tag.Id.CompatValue(),
                         out LayoutRect actual))
                     continue;
-                LayoutRect desired = desiredBounds[item.Tag.Id.Value];
+                LayoutRect desired = desiredBounds[item.Tag.Id.CompatValue()];
                 LayoutPoint insertion = Project(item.Tag.TagHeadPosition, right, up);
                 LayoutPoint anchor = TryGetLeaderOrHostAnchor(
                     item.Tag,
@@ -973,7 +973,7 @@ internal static class SmartTagRevitService
             up,
             warnings);
         HashSet<long> referenceIds = referenceTags
-            .Select(tag => tag.Id.Value)
+            .Select(tag => tag.Id.CompatValue())
             .ToHashSet();
         (List<IndependentTag> targetTags, _) = CollectTagsTouchedByRectangle(
             document,
@@ -983,7 +983,7 @@ internal static class SmartTagRevitService
             up,
             warnings);
         targetTags = targetTags
-            .Where(tag => !referenceIds.Contains(tag.Id.Value))
+            .Where(tag => !referenceIds.Contains(tag.Id.CompatValue()))
             .ToList();
         if (referenceTags.Count == 0 || targetTags.Count == 0)
             throw new InvalidOperationException(
@@ -1000,7 +1000,7 @@ internal static class SmartTagRevitService
 
         IndependentTag[] measurementTags = referenceTags
             .Concat(targetTags)
-            .GroupBy(tag => tag.Id.Value)
+            .GroupBy(tag => tag.Id.CompatValue())
             .Select(group => group.First())
             .ToArray();
         Dictionary<long, LayoutRect> bounds = MeasureTagTextBounds(
@@ -1019,19 +1019,19 @@ internal static class SmartTagRevitService
             up,
             warnings,
             reportAdjustments: false);
-        if (measurementTags.Any(tag => !bounds.ContainsKey(tag.Id.Value)))
+        if (measurementTags.Any(tag => !bounds.ContainsKey(tag.Id.CompatValue())))
             throw new InvalidOperationException(
                 "One or more selected tag text bounds could not be measured.");
 
         Dictionary<long, IndependentTag> targetsById = targetTags
-            .ToDictionary(tag => tag.Id.Value);
+            .ToDictionary(tag => tag.Id.CompatValue());
         List<IndependentTag> orderedReferences = referenceTags
-            .OrderByDescending(tag => GetVisibleTagRow(tag, bounds[tag.Id.Value]))
-            .ThenBy(tag => tag.Id.Value)
+            .OrderByDescending(tag => GetVisibleTagRow(tag, bounds[tag.Id.CompatValue()]))
+            .ThenBy(tag => tag.Id.CompatValue())
             .ToList();
         double[] alignedReferenceRows = orderedReferences
             .Take(pairCount)
-            .Select(tag => GetVisibleTagRow(tag, bounds[tag.Id.Value]))
+            .Select(tag => GetVisibleTagRow(tag, bounds[tag.Id.CompatValue()]))
             .ToArray();
         var desiredRows = alignedReferenceRows.ToList();
         int extraCount = Math.Max(0, targetTags.Count - pairCount);
@@ -1040,7 +1040,7 @@ internal static class SmartTagRevitService
             double rowGap = Math.Max(0.0, rowGapPaperMillimeters) *
                             Math.Max(1, view.Scale) / 304.8;
             double maximumTargetHeight = targetTags
-                .Max(tag => bounds[tag.Id.Value].Height);
+                .Max(tag => bounds[tag.Id.CompatValue()].Height);
             double pitch = maximumTargetHeight + rowGap;
             if (placeExtrasAbove)
             {
@@ -1088,13 +1088,13 @@ internal static class SmartTagRevitService
             {
                 if (target.Pinned)
                 {
-                    warnings.Add($"Target tag {target.Id.Value} is pinned and was skipped.");
+                    warnings.Add($"Target tag {target.Id.CompatValue()} is pinned and was skipped.");
                     continue;
                 }
-                double shiftV = desiredRowsByTag[target.Id.Value] -
+                double shiftV = desiredRowsByTag[target.Id.CompatValue()] -
                                 GetVisibleTagRow(
                                     target,
-                                    bounds[target.Id.Value]);
+                                    bounds[target.Id.CompatValue()]);
                 try
                 {
                     target.TagHeadPosition += up * shiftV;
@@ -1104,7 +1104,7 @@ internal static class SmartTagRevitService
                 catch (Exception exception)
                 {
                     warnings.Add(
-                        $"Tag {target.Id.Value} horizontal-row alignment: " +
+                        $"Tag {target.Id.CompatValue()} horizontal-row alignment: " +
                         FriendlyTagError(exception));
                 }
             }
@@ -1132,10 +1132,10 @@ internal static class SmartTagRevitService
                              .Where(tag => alignedIds.Contains(tag.Id)))
                 {
                     if (!actualBounds.TryGetValue(
-                            target.Id.Value,
+                            target.Id.CompatValue(),
                             out LayoutRect targetBounds))
                         continue;
-                    double correctionV = desiredRowsByTag[target.Id.Value] -
+                    double correctionV = desiredRowsByTag[target.Id.CompatValue()] -
                                          GetVisibleTagRow(target, targetBounds);
                     target.TagHeadPosition += up * correctionV;
                 }
@@ -1199,7 +1199,7 @@ internal static class SmartTagRevitService
 
         SmartTagStackRouteInput BuildRowRouteInput(IndependentTag tag)
         {
-            LayoutRect body = bounds[tag.Id.Value];
+            LayoutRect body = bounds[tag.Id.CompatValue()];
             LayoutPoint anchor = TryGetLeaderOrHostAnchor(
                 tag,
                 document,
@@ -1211,7 +1211,7 @@ internal static class SmartTagRevitService
             LayoutPoint attachment = SmartTagStackRouting
                 .GetVisibleLeaderAttachmentPoint(body, anchor);
             return new SmartTagStackRouteInput(
-                tag.Id.Value,
+                tag.Id.CompatValue(),
                 body,
                 attachment,
                 anchor);
@@ -1291,10 +1291,10 @@ internal static class SmartTagRevitService
             reportAdjustments: false);
 
         var items = selectedTags
-            .Where(tag => bounds.ContainsKey(tag.Id.Value))
+            .Where(tag => bounds.ContainsKey(tag.Id.CompatValue()))
             .Select(tag =>
             {
-                LayoutRect body = bounds[tag.Id.Value];
+                LayoutRect body = bounds[tag.Id.CompatValue()];
                 LayoutPoint anchor = TryGetLeaderOrHostAnchor(
                     tag,
                     document,
@@ -1323,7 +1323,7 @@ internal static class SmartTagRevitService
             double edge = item.PlaceLeft
                 ? item.Anchor.U - railOffset
                 : item.Anchor.U + railOffset;
-            desiredEdges[item.Tag.Id.Value] = (item.PlaceLeft, edge);
+            desiredEdges[item.Tag.Id.CompatValue()] = (item.PlaceLeft, edge);
         }
 
         int arranged = 0;
@@ -1338,12 +1338,12 @@ internal static class SmartTagRevitService
                 IndependentTag tag = item.Tag;
                 if (tag.Pinned)
                 {
-                    warnings.Add($"Tag {tag.Id.Value} is pinned and was skipped.");
+                    warnings.Add($"Tag {tag.Id.CompatValue()} is pinned and was skipped.");
                     continue;
                 }
                 try
                 {
-                    (bool left, double targetEdge) = desiredEdges[tag.Id.Value];
+                    (bool left, double targetEdge) = desiredEdges[tag.Id.CompatValue()];
                     double currentEdge = left ? item.Bounds.MaxU : item.Bounds.MinU;
                     // SPLIT is intentionally a coarse horizontal gather only.
                     // Preserve the exact existing row so the user can run
@@ -1355,7 +1355,7 @@ internal static class SmartTagRevitService
                 catch (Exception exception)
                 {
                     warnings.Add(
-                        $"Tag {tag.Id.Value} split placement: " +
+                        $"Tag {tag.Id.CompatValue()} split placement: " +
                         FriendlyTagError(exception));
                 }
             }
@@ -1387,9 +1387,9 @@ internal static class SmartTagRevitService
                     reportAdjustments: false);
                 foreach (IndependentTag tag in arrangedTags)
                 {
-                    if (!actualBounds.TryGetValue(tag.Id.Value, out LayoutRect actual))
+                    if (!actualBounds.TryGetValue(tag.Id.CompatValue(), out LayoutRect actual))
                         continue;
-                    (bool left, double targetEdge) = desiredEdges[tag.Id.Value];
+                    (bool left, double targetEdge) = desiredEdges[tag.Id.CompatValue()];
                     double actualEdge = left ? actual.MaxU : actual.MinU;
                     tag.TagHeadPosition += right * (targetEdge - actualEdge);
                 }
@@ -1521,7 +1521,7 @@ internal static class SmartTagRevitService
                 // the active view here. An orphaned tag still has valid visible text
                 // bounds and can also be used for manual edge alignment.
                 .Where(tag => tag.Id != referenceTag.Id)
-                .GroupBy(tag => tag.Id.Value)
+                .GroupBy(tag => tag.Id.CompatValue())
                 .Select(group => group.First())
                 .ToList();
         }
@@ -1534,7 +1534,7 @@ internal static class SmartTagRevitService
                 right,
                 up,
                 warnings,
-                referenceTag.Id.Value);
+                referenceTag.Id.CompatValue());
         }
         if (selectedTags.Count == 0)
         {
@@ -1548,7 +1548,7 @@ internal static class SmartTagRevitService
         var measurableTagIds = new HashSet<long>();
         List<IndependentTag> measurementTags = selectedTags
             .Prepend(referenceTag)
-            .GroupBy(tag => tag.Id.Value)
+            .GroupBy(tag => tag.Id.CompatValue())
             .Select(group => group.First())
             .ToList();
 
@@ -1577,31 +1577,31 @@ internal static class SmartTagRevitService
                 catch (Exception exception)
                 {
                     warnings.Add(
-                        $"Tag {tag.Id.Value} text measurement: {FriendlyTagError(exception)}");
+                        $"Tag {tag.Id.CompatValue()} text measurement: {FriendlyTagError(exception)}");
                 }
                 // Even when Revit refuses to toggle an orphaned/multi-leader
                 // tag, its visible bounding box is still usable. Include it so
                 // Finish cannot silently produce an empty target set.
-                measurableTagIds.Add(tag.Id.Value);
+                measurableTagIds.Add(tag.Id.CompatValue());
             }
             document.Regenerate();
             foreach (IndependentTag tag in measurementTags)
             {
-                if (!measurableTagIds.Contains(tag.Id.Value)) continue;
+                if (!measurableTagIds.Contains(tag.Id.CompatValue())) continue;
                 try
                 {
                     BoundingBoxXYZ? box = tag.get_BoundingBox(view);
                     if (box is null)
                     {
-                        warnings.Add($"Tag {tag.Id.Value} has no visible text bounds in this view.");
+                        warnings.Add($"Tag {tag.Id.CompatValue()} has no visible text bounds in this view.");
                         continue;
                     }
-                    measuredBounds[tag.Id.Value] = ProjectBox(box, right, up);
+                    measuredBounds[tag.Id.CompatValue()] = ProjectBox(box, right, up);
                 }
                 catch (Exception exception)
                 {
                     warnings.Add(
-                        $"Tag {tag.Id.Value} text bounds: {FriendlyTagError(exception)}");
+                        $"Tag {tag.Id.CompatValue()} text bounds: {FriendlyTagError(exception)}");
                 }
             }
             measurement.RollBack();
@@ -1656,13 +1656,13 @@ internal static class SmartTagRevitService
         foreach ((long key, LayoutRect value) in safeManualBounds)
             measuredBounds[key] = value;
 
-        if (!measuredBounds.TryGetValue(referenceTag.Id.Value, out LayoutRect referenceBounds))
+        if (!measuredBounds.TryGetValue(referenceTag.Id.CompatValue(), out LayoutRect referenceBounds))
         {
             throw new InvalidOperationException(
                 "The reference tag text bounds could not be measured in the active view.");
         }
         Dictionary<long, LayoutRect> targetBounds = measuredBounds
-            .Where(item => item.Key != referenceTag.Id.Value)
+            .Where(item => item.Key != referenceTag.Id.CompatValue())
             .ToDictionary(item => item.Key, item => item.Value);
         LayoutPoint referenceInsertion = Project(referenceTag.TagHeadPosition, right, up);
         LayoutPoint referenceAnchor = TryGetLeaderOrHostAnchor(
@@ -1706,7 +1706,7 @@ internal static class SmartTagRevitService
         var shifts = new Dictionary<long, double>();
         foreach (IndependentTag tag in selectedTags)
         {
-            if (!targetBounds.TryGetValue(tag.Id.Value, out LayoutRect bounds)) continue;
+            if (!targetBounds.TryGetValue(tag.Id.CompatValue(), out LayoutRect bounds)) continue;
             LayoutPoint insertion = Project(tag.TagHeadPosition, right, up);
             LayoutPoint anchor = TryGetLeaderOrHostAnchor(
                 tag,
@@ -1721,7 +1721,7 @@ internal static class SmartTagRevitService
                     bounds, insertion, anchor, tag.HasLeader)
                 : SmartTagStackRouting.GetVisibleRightEdge(
                     bounds, insertion, anchor, tag.HasLeader);
-            shifts[tag.Id.Value] = referenceEdge - targetEdge;
+            shifts[tag.Id.CompatValue()] = referenceEdge - targetEdge;
         }
         int aligned = 0;
         var alignedIds = new List<ElementId>();
@@ -1734,10 +1734,10 @@ internal static class SmartTagRevitService
             transaction.Start();
             foreach (IndependentTag tag in selectedTags)
             {
-                if (!shifts.TryGetValue(tag.Id.Value, out double shiftU)) continue;
+                if (!shifts.TryGetValue(tag.Id.CompatValue(), out double shiftU)) continue;
                 if (tag.Pinned)
                 {
-                    warnings.Add($"Target tag {tag.Id.Value} is pinned and was skipped.");
+                    warnings.Add($"Target tag {tag.Id.CompatValue()} is pinned and was skipped.");
                     continue;
                 }
                 try
@@ -1750,7 +1750,7 @@ internal static class SmartTagRevitService
                 }
                 catch (Exception exception)
                 {
-                    warnings.Add($"Tag {tag.Id.Value} alignment: {FriendlyTagError(exception)}");
+                    warnings.Add($"Tag {tag.Id.CompatValue()} alignment: {FriendlyTagError(exception)}");
                 }
             }
             document.Regenerate();
@@ -1841,10 +1841,10 @@ internal static class SmartTagRevitService
         double rowGapPaperMillimeters)
     {
         var unorderedStackItems = selectedTags
-            .Where(tag => targetBounds.ContainsKey(tag.Id.Value))
+            .Where(tag => targetBounds.ContainsKey(tag.Id.CompatValue()))
             .Select(tag =>
             {
-                LayoutRect bounds = targetBounds[tag.Id.Value];
+                LayoutRect bounds = targetBounds[tag.Id.CompatValue()];
                 LayoutPoint anchor = TryGetLeaderOrHostAnchor(
                                          tag,
                                          document,
@@ -1882,7 +1882,7 @@ internal static class SmartTagRevitService
         SmartTagStackRoutePlan routePlan = SmartTagStackRouting.FindBestOrder(
             unorderedStackItems
                 .Select(item => new SmartTagStackRouteInput(
-                    item.Tag.Id.Value,
+                    item.Tag.Id.CompatValue(),
                     item.RoutingBounds,
                     Project(item.Tag.TagHeadPosition, right, up),
                     item.Anchor))
@@ -1893,7 +1893,7 @@ internal static class SmartTagRevitService
             rowGap);
         Dictionary<long, (IndependentTag Tag, LayoutRect Bounds,
             LayoutRect RoutingBounds, LayoutPoint Anchor, double VisibleLeftEdge)> itemsById =
-            unorderedStackItems.ToDictionary(item => item.Tag.Id.Value);
+            unorderedStackItems.ToDictionary(item => item.Tag.Id.CompatValue());
         List<(IndependentTag Tag, LayoutRect Bounds,
             LayoutRect RoutingBounds, LayoutPoint Anchor, double VisibleLeftEdge)> stackItems =
             routePlan.OrderedKeys.Select(key => itemsById[key]).ToList();
@@ -1919,7 +1919,7 @@ internal static class SmartTagRevitService
                 catch (Exception exception)
                 {
                     warnings.Add(
-                        $"Tag {item.Tag.Id.Value} horizontal orientation: " +
+                        $"Tag {item.Tag.Id.CompatValue()} horizontal orientation: " +
                         FriendlyTagError(exception));
                 }
             }
@@ -1930,7 +1930,7 @@ internal static class SmartTagRevitService
                 LayoutRect bounds = item.Bounds;
                 if (tag.Pinned)
                 {
-                    warnings.Add($"Target tag {tag.Id.Value} is pinned and was skipped.");
+                    warnings.Add($"Target tag {tag.Id.CompatValue()} is pinned and was skipped.");
                     continue;
                 }
 
@@ -1950,7 +1950,7 @@ internal static class SmartTagRevitService
                 }
                 catch (Exception exception)
                 {
-                    warnings.Add($"Tag {tag.Id.Value} stack placement: {FriendlyTagError(exception)}");
+                    warnings.Add($"Tag {tag.Id.CompatValue()} stack placement: {FriendlyTagError(exception)}");
                 }
             }
 
@@ -1976,7 +1976,7 @@ internal static class SmartTagRevitService
                 }
                 catch (Exception exception)
                 {
-                    warnings.Add($"Tag {tag.Id.Value} leader references: {FriendlyTagError(exception)}");
+                    warnings.Add($"Tag {tag.Id.CompatValue()} leader references: {FriendlyTagError(exception)}");
                     continue;
                 }
 
@@ -1993,7 +1993,7 @@ internal static class SmartTagRevitService
                             up);
                         if (end is null)
                         {
-                            warnings.Add($"Tag {tag.Id.Value} leader end could not be resolved.");
+                            warnings.Add($"Tag {tag.Id.CompatValue()} leader end could not be resolved.");
                             continue;
                         }
                         LayoutPoint head = Project(tag.TagHeadPosition, right, up);
@@ -2007,7 +2007,7 @@ internal static class SmartTagRevitService
                     }
                     catch (Exception exception)
                     {
-                        warnings.Add($"Tag {tag.Id.Value} orthogonal leader: {FriendlyTagError(exception)}");
+                        warnings.Add($"Tag {tag.Id.CompatValue()} orthogonal leader: {FriendlyTagError(exception)}");
                     }
                 }
             }
@@ -2073,7 +2073,7 @@ internal static class SmartTagRevitService
                         catch (Exception exception)
                         {
                             warnings.Add(
-                                $"Tag {route.Tag.Id.Value} leader endpoint separation: " +
+                                $"Tag {route.Tag.Id.CompatValue()} leader endpoint separation: " +
                                 FriendlyTagError(exception));
                         }
                     }
@@ -2086,7 +2086,7 @@ internal static class SmartTagRevitService
                     catch (Exception exception)
                     {
                         warnings.Add(
-                            $"Tag {route.Tag.Id.Value} separated orthogonal leader: " +
+                            $"Tag {route.Tag.Id.CompatValue()} separated orthogonal leader: " +
                             FriendlyTagError(exception));
                     }
                 }
@@ -2238,7 +2238,7 @@ internal static class SmartTagRevitService
                     linkTransform = link.GetTransform();
                 }
 
-                if (host?.Category?.Id.Value != (long)BuiltInCategory.OST_DuctCurves)
+                if (host?.Category?.Id.CompatValue() != (long)BuiltInCategory.OST_DuctCurves)
                     continue;
 
                 isDuct = true;
@@ -2296,7 +2296,7 @@ internal static class SmartTagRevitService
         catch (Exception exception)
         {
             warnings.Add(
-                $"Tag {tag.Id.Value} horizontal orientation: " +
+                $"Tag {tag.Id.CompatValue()} horizontal orientation: " +
                 FriendlyTagError(exception));
         }
         if (!tag.HasLeader) return;
@@ -2316,7 +2316,7 @@ internal static class SmartTagRevitService
                 catch (Exception exception)
                 {
                     warnings.Add(
-                        $"Tag {tag.Id.Value} AUTO orthogonal leader: " +
+                        $"Tag {tag.Id.CompatValue()} AUTO orthogonal leader: " +
                         FriendlyTagError(exception));
                 }
             }
@@ -2324,7 +2324,7 @@ internal static class SmartTagRevitService
         catch (Exception exception)
         {
             warnings.Add(
-                $"Tag {tag.Id.Value} AUTO leader references: " +
+                $"Tag {tag.Id.CompatValue()} AUTO leader references: " +
                 FriendlyTagError(exception));
         }
     }
@@ -2368,9 +2368,9 @@ internal static class SmartTagRevitService
         {
             XYZ point = reference.GlobalPoint;
             if (point is not null &&
-                double.IsFinite(point.X) &&
-                double.IsFinite(point.Y) &&
-                double.IsFinite(point.Z))
+                PortableMath.IsFinite(point.X) &&
+                PortableMath.IsFinite(point.Y) &&
+                PortableMath.IsFinite(point.Z))
             {
                 return Project(point, right, up);
             }
@@ -2434,7 +2434,7 @@ internal static class SmartTagRevitService
                     linkTransform = link.GetTransform();
                 }
 
-                if (host?.Category?.Id.Value == (long)BuiltInCategory.OST_DuctCurves &&
+                if (host?.Category?.Id.CompatValue() == (long)BuiltInCategory.OST_DuctCurves &&
                     host.Location is LocationCurve locationCurve &&
                     locationCurve.Curve.IsBound)
                 {
@@ -2537,7 +2537,7 @@ internal static class SmartTagRevitService
                 right,
                 up,
                 warnings,
-                referenceTag.Id.Value);
+                referenceTag.Id.CompatValue());
         if (selectedTags.Count == 0)
         {
             throw new InvalidOperationException(
@@ -2582,7 +2582,7 @@ internal static class SmartTagRevitService
             up,
             warnings,
             reportAdjustments: true);
-        if (!referenceMeasurement.TryGetValue(referenceTag.Id.Value, out LayoutRect referenceBounds))
+        if (!referenceMeasurement.TryGetValue(referenceTag.Id.CompatValue(), out LayoutRect referenceBounds))
             throw new InvalidOperationException("The reference tag text bounds could not be measured.");
 
         // A Duct can be a fixed AUTO sample too. Resolve that sample against
@@ -2616,10 +2616,10 @@ internal static class SmartTagRevitService
             right,
             up);
         var targets = selectedTags
-            .Where(tag => targetBounds.ContainsKey(tag.Id.Value))
+            .Where(tag => targetBounds.ContainsKey(tag.Id.CompatValue()))
             .Select(tag =>
             {
-                LayoutRect bounds = targetBounds[tag.Id.Value];
+                LayoutRect bounds = targetBounds[tag.Id.CompatValue()];
                 LayoutPoint anchor = TryGetAutoColumnTargetAnchor(
                                          tag,
                                          document,
@@ -2662,7 +2662,7 @@ internal static class SmartTagRevitService
 
         SmartTagAutoColumnRoutePlan autoPlan = SmartTagStackRouting.FindBestAroundReference(
             targets.Select(item => new SmartTagStackRouteInput(
-                    item.Tag.Id.Value,
+                    item.Tag.Id.CompatValue(),
                     item.RoutingBounds,
                     SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
                         item.Bounds,
@@ -2670,7 +2670,7 @@ internal static class SmartTagRevitService
                     item.Anchor))
                 .ToArray(),
             new SmartTagStackRouteInput(
-                referenceTag.Id.Value,
+                referenceTag.Id.CompatValue(),
                 referenceRoutingBounds,
                 SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
                     referenceBounds,
@@ -2682,9 +2682,9 @@ internal static class SmartTagRevitService
             rowGap,
             belowOnly: !placeAboveReference,
             aboveOnly: placeAboveReference);
-        var targetsById = targets.ToDictionary(item => item.Tag.Id.Value);
+        var targetsById = targets.ToDictionary(item => item.Tag.Id.CompatValue());
         var originalHeads = targets.ToDictionary(
-            item => item.Tag.Id.Value,
+            item => item.Tag.Id.CompatValue(),
             item => Project(item.Tag.TagHeadPosition, right, up));
         SmartTagAutoColumnRoutePlan finalPlan = autoPlan;
         int arranged = 0;
@@ -2705,7 +2705,7 @@ internal static class SmartTagRevitService
                 catch (Exception exception)
                 {
                     warnings.Add(
-                        $"Tag {item.Tag.Id.Value} horizontal orientation: " +
+                        $"Tag {item.Tag.Id.CompatValue()} horizontal orientation: " +
                         FriendlyTagError(exception));
                 }
             }
@@ -2779,7 +2779,7 @@ internal static class SmartTagRevitService
                     warnings,
                     reportAdjustments: false);
                 LayoutRect finalReferenceBounds = finalTextBounds.TryGetValue(
-                    referenceTag.Id.Value,
+                    referenceTag.Id.CompatValue(),
                     out LayoutRect measuredReferenceBounds)
                         ? measuredReferenceBounds
                         : referenceBounds;
@@ -2806,9 +2806,9 @@ internal static class SmartTagRevitService
                     .Select(item =>
                     {
                         LayoutPoint currentHead = Project(item.Tag.TagHeadPosition, right, up);
-                        LayoutPoint originalHead = originalHeads[item.Tag.Id.Value];
+                        LayoutPoint originalHead = originalHeads[item.Tag.Id.CompatValue()];
                         LayoutRect currentBounds = finalTextBounds.TryGetValue(
-                            item.Tag.Id.Value,
+                            item.Tag.Id.CompatValue(),
                             out LayoutRect measuredBounds)
                                 ? measuredBounds
                                 : ShiftRect(
@@ -2841,7 +2841,7 @@ internal static class SmartTagRevitService
 
                 finalPlan = SmartTagStackRouting.FindBestAroundReference(
                     actualTargets.Select(item => new SmartTagStackRouteInput(
-                            item.Tag.Id.Value,
+                            item.Tag.Id.CompatValue(),
                             item.RoutingBounds,
                             SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
                                 item.Bounds,
@@ -2849,7 +2849,7 @@ internal static class SmartTagRevitService
                             item.Anchor))
                         .ToArray(),
                     new SmartTagStackRouteInput(
-                        referenceTag.Id.Value,
+                        referenceTag.Id.CompatValue(),
                         finalReferenceRoutingBounds,
                         SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
                             finalReferenceBounds,
@@ -2862,7 +2862,7 @@ internal static class SmartTagRevitService
                     belowOnly: !placeAboveReference,
                     aboveOnly: placeAboveReference);
 
-                var actualById = actualTargets.ToDictionary(item => item.Tag.Id.Value);
+                var actualById = actualTargets.ToDictionary(item => item.Tag.Id.CompatValue());
                 double boundary = placeAboveReference
                     ? finalReferenceBounds.MaxV + rowGap
                     : finalReferenceBounds.MinV - rowGap;
@@ -3151,7 +3151,7 @@ internal static class SmartTagRevitService
             {
                 BoundingBoxXYZ? fullBox = tag.get_BoundingBox(view);
                 if (fullBox is not null)
-                    fullBounds[tag.Id.Value] = ProjectBox(fullBox, right, up);
+                    fullBounds[tag.Id.CompatValue()] = ProjectBox(fullBox, right, up);
             }
             catch
             {
@@ -3198,7 +3198,7 @@ internal static class SmartTagRevitService
                     // Keep the full-bounds fallback for unusual tag families.
                 }
             }
-            leaderSegments[tag.Id.Value] = segments;
+            leaderSegments[tag.Id.CompatValue()] = segments;
         }
 
         // The cheap visible-bounds pass normally reduces hundreds of view tags
@@ -3208,7 +3208,7 @@ internal static class SmartTagRevitService
         List<IndependentTag> candidateTags = visibleTags
             .Where(tag =>
             {
-                long id = tag.Id.Value;
+                long id = tag.Id.CompatValue();
                 bool pathHit = leaderSegments.TryGetValue(id, out List<LayoutSegment>? paths) &&
                                paths.Any(path => SegmentIntersectsRect(path, sourceZone));
                 bool boxHit = fullBounds.TryGetValue(id, out LayoutRect full) &&
@@ -3247,11 +3247,11 @@ internal static class SmartTagRevitService
                 {
                     BoundingBoxXYZ? box = tag.get_BoundingBox(view);
                     if (box is not null)
-                        textBounds[tag.Id.Value] = ProjectBox(box, right, up);
+                        textBounds[tag.Id.CompatValue()] = ProjectBox(box, right, up);
                 }
                 catch (Exception exception)
                 {
-                    warnings.Add($"Tag {tag.Id.Value} text measurement: {FriendlyTagError(exception)}");
+                    warnings.Add($"Tag {tag.Id.CompatValue()} text measurement: {FriendlyTagError(exception)}");
                 }
             }
             measurement.RollBack();
@@ -3260,7 +3260,7 @@ internal static class SmartTagRevitService
         List<IndependentTag> selectedTags = candidateTags
             .Where(tag =>
             {
-                long id = tag.Id.Value;
+                long id = tag.Id.CompatValue();
                 bool textHit = textBounds.TryGetValue(id, out LayoutRect text) &&
                                RectanglesTouch(text, sourceZone);
                 bool leaderHit = leaderSegments.TryGetValue(id, out List<LayoutSegment>? paths) &&
@@ -3271,7 +3271,7 @@ internal static class SmartTagRevitService
                                    RectanglesTouch(full, sourceZone);
                 return textHit || leaderHit || fallbackHit;
             })
-            .GroupBy(tag => tag.Id.Value)
+            .GroupBy(tag => tag.Id.CompatValue())
             .Select(group => group.First())
             .ToList();
         if (selectedTags.Count == 0)
@@ -3321,10 +3321,10 @@ internal static class SmartTagRevitService
         double rowGapPaperMillimeters)
     {
         var items = selectedTags
-            .Where(tag => measuredBounds.ContainsKey(tag.Id.Value))
+            .Where(tag => measuredBounds.ContainsKey(tag.Id.CompatValue()))
             .Select(tag =>
             {
-                LayoutRect bounds = measuredBounds[tag.Id.Value];
+                LayoutRect bounds = measuredBounds[tag.Id.CompatValue()];
                 LayoutPoint anchor = TryGetLeaderOrHostAnchor(
                                          tag,
                                          document,
@@ -3361,7 +3361,7 @@ internal static class SmartTagRevitService
                 ? zoneCenterU + bounds.Width * 0.5
                 : zoneCenterU - bounds.Width * 0.5;
             double centerV = top - bounds.Height * 0.5;
-            targetCenters[tag.Id.Value] = new LayoutPoint(centerU, centerV);
+            targetCenters[tag.Id.CompatValue()] = new LayoutPoint(centerU, centerV);
             top -= bounds.Height + rowGap;
         }
 
@@ -3376,10 +3376,10 @@ internal static class SmartTagRevitService
             {
                 if (tag.Pinned)
                 {
-                    warnings.Add($"Target tag {tag.Id.Value} is pinned and was skipped.");
+                    warnings.Add($"Target tag {tag.Id.CompatValue()} is pinned and was skipped.");
                     continue;
                 }
-                if (!targetCenters.TryGetValue(tag.Id.Value, out LayoutPoint target))
+                if (!targetCenters.TryGetValue(tag.Id.CompatValue(), out LayoutPoint target))
                     continue;
                 try
                 {
@@ -3393,7 +3393,7 @@ internal static class SmartTagRevitService
                 }
                 catch (Exception exception)
                 {
-                    warnings.Add($"Tag {tag.Id.Value} zone placement: {FriendlyTagError(exception)}");
+                    warnings.Add($"Tag {tag.Id.CompatValue()} zone placement: {FriendlyTagError(exception)}");
                 }
             }
             document.Regenerate();
@@ -3418,7 +3418,7 @@ internal static class SmartTagRevitService
                                 up);
                             if (end is null)
                             {
-                                warnings.Add($"Tag {tag.Id.Value} leader end could not be resolved.");
+                                warnings.Add($"Tag {tag.Id.CompatValue()} leader end could not be resolved.");
                                 continue;
                             }
                             LayoutPoint head = Project(tag.TagHeadPosition, right, up);
@@ -3427,13 +3427,13 @@ internal static class SmartTagRevitService
                         }
                         catch (Exception exception)
                         {
-                            warnings.Add($"Tag {tag.Id.Value} orthogonal leader: {FriendlyTagError(exception)}");
+                            warnings.Add($"Tag {tag.Id.CompatValue()} orthogonal leader: {FriendlyTagError(exception)}");
                         }
                     }
                 }
                 catch (Exception exception)
                 {
-                    warnings.Add($"Tag {tag.Id.Value} leader references: {FriendlyTagError(exception)}");
+                    warnings.Add($"Tag {tag.Id.CompatValue()} leader references: {FriendlyTagError(exception)}");
                 }
             }
             document.Regenerate();
@@ -3486,7 +3486,7 @@ internal static class SmartTagRevitService
         List<IndependentTag> visibleTags = new FilteredElementCollector(document, view.Id)
             .OfClass(typeof(IndependentTag))
             .Cast<IndependentTag>()
-            .Where(tag => tag.Id.Value != excludedTagId && !tag.IsHidden(view))
+            .Where(tag => tag.Id.CompatValue() != excludedTagId && !tag.IsHidden(view))
             .ToList();
         var fullBounds = new Dictionary<long, LayoutRect>();
         var leaderSegments = new Dictionary<long, List<LayoutSegment>>();
@@ -3496,7 +3496,7 @@ internal static class SmartTagRevitService
             {
                 BoundingBoxXYZ? fullBox = tag.get_BoundingBox(view);
                 if (fullBox is not null)
-                    fullBounds[tag.Id.Value] = ProjectBox(fullBox, right, up);
+                    fullBounds[tag.Id.CompatValue()] = ProjectBox(fullBox, right, up);
             }
             catch
             {
@@ -3536,13 +3536,13 @@ internal static class SmartTagRevitService
                     // Full bounds remain the fallback for unusual tag types.
                 }
             }
-            leaderSegments[tag.Id.Value] = segments;
+            leaderSegments[tag.Id.CompatValue()] = segments;
         }
 
         List<IndependentTag> candidates = visibleTags
             .Where(tag =>
             {
-                long id = tag.Id.Value;
+                long id = tag.Id.CompatValue();
                 bool pathHit = leaderSegments.TryGetValue(id, out List<LayoutSegment>? paths) &&
                                paths.Any(path => SegmentIntersectsRect(path, sourceZone));
                 bool boxHit = fullBounds.TryGetValue(id, out LayoutRect full) &&
@@ -3561,7 +3561,7 @@ internal static class SmartTagRevitService
         List<IndependentTag> selected = candidates
             .Where(tag =>
             {
-                long id = tag.Id.Value;
+                long id = tag.Id.CompatValue();
                 bool textHit = textBounds.TryGetValue(id, out LayoutRect text) &&
                                RectanglesTouch(text, sourceZone);
                 bool leaderHit = leaderSegments.TryGetValue(id, out List<LayoutSegment>? paths) &&
@@ -3572,7 +3572,7 @@ internal static class SmartTagRevitService
                                    RectanglesTouch(full, sourceZone);
                 return textHit || leaderHit || fallbackHit;
             })
-            .GroupBy(tag => tag.Id.Value)
+            .GroupBy(tag => tag.Id.CompatValue())
             .Select(group => group.First())
             .ToList();
         return (selected, textBounds);
@@ -3598,10 +3598,10 @@ internal static class SmartTagRevitService
             if (TryCreateLeaderlessMeasurementTag(
                     document, view, tag, forceHorizontal, out IndependentTag? proxy))
             {
-                measurementTags[tag.Id.Value] = proxy!;
+                measurementTags[tag.Id.CompatValue()] = proxy!;
                 continue;
             }
-            measurementTags[tag.Id.Value] = tag;
+            measurementTags[tag.Id.CompatValue()] = tag;
             if (forceHorizontal)
             {
                 try { tag.TagOrientation = TagOrientation.Horizontal; }
@@ -3625,12 +3625,12 @@ internal static class SmartTagRevitService
         {
             try
             {
-                IndependentTag measuredTag = measurementTags[tag.Id.Value];
+                IndependentTag measuredTag = measurementTags[tag.Id.CompatValue()];
                 BoundingBoxXYZ? box = measuredTag.get_BoundingBox(view);
                 if (box is not null)
                 {
                     LayoutRect measuredBounds = ProjectBox(box, right, up);
-                    result[tag.Id.Value] = measuredTag.Id == tag.Id
+                    result[tag.Id.CompatValue()] = measuredTag.Id == tag.Id
                         ? measuredBounds
                         : AnchorLeaderlessBodyToVisibleTag(
                             tag,
@@ -3643,7 +3643,7 @@ internal static class SmartTagRevitService
             }
             catch (Exception exception)
             {
-                warnings.Add($"Tag {tag.Id.Value} text measurement: {FriendlyTagError(exception)}");
+                warnings.Add($"Tag {tag.Id.CompatValue()} text measurement: {FriendlyTagError(exception)}");
             }
         }
         measurement.RollBack();
@@ -3668,10 +3668,10 @@ internal static class SmartTagRevitService
             if (TryCreateLeaderlessMeasurementTag(
                     document, view, tag, forceHorizontal: false, out IndependentTag? proxy))
             {
-                measurementTags[tag.Id.Value] = proxy!;
+                measurementTags[tag.Id.CompatValue()] = proxy!;
                 continue;
             }
-            measurementTags[tag.Id.Value] = tag;
+            measurementTags[tag.Id.CompatValue()] = tag;
             try
             {
                 if (tag.Pinned) tag.Pinned = false;
@@ -3687,12 +3687,12 @@ internal static class SmartTagRevitService
         {
             try
             {
-                IndependentTag measuredTag = measurementTags[tag.Id.Value];
+                IndependentTag measuredTag = measurementTags[tag.Id.CompatValue()];
                 BoundingBoxXYZ? box = measuredTag.get_BoundingBox(view);
                 if (box is not null)
                 {
                     LayoutRect measuredBounds = ProjectBox(box, right, up);
-                    result[tag.Id.Value] = measuredTag.Id == tag.Id
+                    result[tag.Id.CompatValue()] = measuredTag.Id == tag.Id
                         ? measuredBounds
                         : AnchorLeaderlessBodyToVisibleTag(
                             tag,
@@ -3706,7 +3706,7 @@ internal static class SmartTagRevitService
             catch (Exception exception)
             {
                 warnings.Add(
-                    $"Tag {tag.Id.Value} final text measurement: " +
+                    $"Tag {tag.Id.CompatValue()} final text measurement: " +
                     FriendlyTagError(exception));
             }
         }
@@ -3799,7 +3799,7 @@ internal static class SmartTagRevitService
     {
         List<IndependentTag> distinctTargets = targetTags
             .Where(tag => tag.Id != referenceTag.Id && !tag.Pinned)
-            .GroupBy(tag => tag.Id.Value)
+            .GroupBy(tag => tag.Id.CompatValue())
             .Select(group => group.First())
             .ToList();
         if (distinctTargets.Count == 0) return;
@@ -3818,7 +3818,7 @@ internal static class SmartTagRevitService
             up,
             warnings,
             reportAdjustments: false);
-        if (!bounds.TryGetValue(referenceTag.Id.Value, out LayoutRect referenceBounds))
+        if (!bounds.TryGetValue(referenceTag.Id.CompatValue(), out LayoutRect referenceBounds))
         {
             warnings.Add("Final reference text bounds could not be measured; initial edge alignment was kept.");
             return;
@@ -3846,7 +3846,7 @@ internal static class SmartTagRevitService
                 referenceTag.HasLeader);
         foreach (IndependentTag tag in distinctTargets)
         {
-            if (!bounds.TryGetValue(tag.Id.Value, out LayoutRect tagBounds)) continue;
+            if (!bounds.TryGetValue(tag.Id.CompatValue(), out LayoutRect tagBounds)) continue;
             try
             {
                 LayoutPoint insertion = Project(tag.TagHeadPosition, right, up);
@@ -3868,7 +3868,7 @@ internal static class SmartTagRevitService
             catch (Exception exception)
             {
                 warnings.Add(
-                    $"Tag {tag.Id.Value} final edge normalization: " +
+                    $"Tag {tag.Id.CompatValue()} final edge normalization: " +
                     FriendlyTagError(exception));
             }
         }
@@ -3890,7 +3890,7 @@ internal static class SmartTagRevitService
     {
         List<IndependentTag> distinctTargets = targetTags
             .Where(tag => tag.Id != referenceTag.Id && !tag.Pinned)
-            .GroupBy(tag => tag.Id.Value)
+            .GroupBy(tag => tag.Id.CompatValue())
             .Select(group => group.First())
             .ToList();
         if (distinctTargets.Count == 0) return;
@@ -3914,7 +3914,7 @@ internal static class SmartTagRevitService
                 up,
                 warnings,
                 reportAdjustments: true);
-        if (!bounds.TryGetValue(referenceTag.Id.Value, out LayoutRect referenceBounds))
+        if (!bounds.TryGetValue(referenceTag.Id.CompatValue(), out LayoutRect referenceBounds))
         {
             warnings.Add("Final reference text bounds could not be measured; initial alignment was kept.");
             return;
@@ -3943,7 +3943,7 @@ internal static class SmartTagRevitService
             double boundary = referenceBounds.MinV - visibleGap;
             foreach (IndependentTag tag in distinctTargets)
             {
-                if (!bounds.TryGetValue(tag.Id.Value, out LayoutRect tagBounds)) continue;
+                if (!bounds.TryGetValue(tag.Id.CompatValue(), out LayoutRect tagBounds)) continue;
                 double desiredCenterV = boundary - tagBounds.Height * 0.5;
                 if (Move(tag, tagBounds, desiredCenterV))
                     boundary = desiredCenterV - tagBounds.Height * 0.5 - visibleGap;
@@ -3955,7 +3955,7 @@ internal static class SmartTagRevitService
             double boundary = referenceBounds.MaxV + visibleGap;
             foreach (IndependentTag tag in distinctTargets)
             {
-                if (!bounds.TryGetValue(tag.Id.Value, out LayoutRect tagBounds)) continue;
+                if (!bounds.TryGetValue(tag.Id.CompatValue(), out LayoutRect tagBounds)) continue;
                 double desiredCenterV = boundary + tagBounds.Height * 0.5;
                 if (Move(tag, tagBounds, desiredCenterV))
                     boundary = desiredCenterV + tagBounds.Height * 0.5 + visibleGap;
@@ -3964,8 +3964,8 @@ internal static class SmartTagRevitService
         }
 
         var rows = distinctTargets
-            .Where(tag => bounds.ContainsKey(tag.Id.Value))
-            .Select(tag => (Tag: tag, Bounds: bounds[tag.Id.Value]))
+            .Where(tag => bounds.ContainsKey(tag.Id.CompatValue()))
+            .Select(tag => (Tag: tag, Bounds: bounds[tag.Id.CompatValue()]))
             .Append((Tag: referenceTag, Bounds: referenceBounds))
             .OrderByDescending(item => (item.Bounds.MinV + item.Bounds.MaxV) * 0.5)
             .ToList();
@@ -4022,7 +4022,7 @@ internal static class SmartTagRevitService
             catch (Exception exception)
             {
                 warnings.Add(
-                    $"Tag {tag.Id.Value} final column normalization: " +
+                    $"Tag {tag.Id.CompatValue()} final column normalization: " +
                     FriendlyTagError(exception));
                 return false;
             }
@@ -4052,9 +4052,9 @@ internal static class SmartTagRevitService
             double safeWidth = Math.Max(estimatedWidth, 1e-4);
             double safeHeight = Math.Max(estimatedHeight, 1e-4);
 
-            if (!bounds.TryGetValue(tag.Id.Value, out LayoutRect measured))
+            if (!bounds.TryGetValue(tag.Id.CompatValue(), out LayoutRect measured))
             {
-                bounds[tag.Id.Value] = new LayoutRect(
+                bounds[tag.Id.CompatValue()] = new LayoutRect(
                     head.U - safeWidth * 0.5,
                     head.V - safeHeight * 0.5,
                     head.U + safeWidth * 0.5,
@@ -4128,7 +4128,7 @@ internal static class SmartTagRevitService
                 Math.Abs(normalized.MaxU - rawMeasured.MaxU) > 1e-8 ||
                 Math.Abs(normalized.MaxV - rawMeasured.MaxV) > 1e-8;
             if (!boundsChanged) continue;
-            bounds[tag.Id.Value] = normalized;
+            bounds[tag.Id.CompatValue()] = normalized;
             adjusted++;
         }
         if (reportAdjustments && adjusted > 0)
@@ -4154,7 +4154,7 @@ internal static class SmartTagRevitService
             .Append(fixedTag)
             .Where(tag => tag is not null && tag.HasLeader && !tag.Pinned)
             .Select(tag => tag!)
-            .GroupBy(tag => tag.Id.Value)
+            .GroupBy(tag => tag.Id.CompatValue())
             .Select(group => group.First())
             .ToArray();
         Dictionary<long, LayoutRect> bodyBounds = MeasureTagTextBoundsInOpenTransaction(
@@ -4190,7 +4190,7 @@ internal static class SmartTagRevitService
                     if (end is null) continue;
                     LayoutPoint insertion = Project(tag.TagHeadPosition, right, up);
                     LayoutPoint attachment = bodyBounds.TryGetValue(
-                        tag.Id.Value,
+                        tag.Id.CompatValue(),
                         out LayoutRect bounds)
                             ? SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
                                 bounds,
@@ -4199,7 +4199,7 @@ internal static class SmartTagRevitService
                     routes.Add(new LeaderLaneRoute(
                         tag,
                         reference,
-                        bodyBounds.TryGetValue(tag.Id.Value, out LayoutRect body)
+                        bodyBounds.TryGetValue(tag.Id.CompatValue(), out LayoutRect body)
                             ? body
                             : new LayoutRect(
                                 insertion.U,
@@ -4214,7 +4214,7 @@ internal static class SmartTagRevitService
             }
             catch (Exception exception)
             {
-                warnings.Add($"Tag {tag.Id.Value} leader references: {FriendlyTagError(exception)}");
+                warnings.Add($"Tag {tag.Id.CompatValue()} leader references: {FriendlyTagError(exception)}");
             }
         }
 
@@ -4356,7 +4356,7 @@ internal static class SmartTagRevitService
         {
             SmartTagStackRouteInput Convert(LeaderLaneRoute route) =>
                 new(
-                    route.Tag.Id.Value,
+                    route.Tag.Id.CompatValue(),
                     route.BodyBounds,
                     route.Head,
                     route.End);
@@ -4397,7 +4397,7 @@ internal static class SmartTagRevitService
                 catch (Exception exception)
                 {
                     warnings.Add(
-                        $"Tag {route.Tag.Id.Value} leader endpoint separation: " +
+                        $"Tag {route.Tag.Id.CompatValue()} leader endpoint separation: " +
                         FriendlyTagError(exception));
                 }
             }
@@ -4413,7 +4413,7 @@ internal static class SmartTagRevitService
             catch (Exception exception)
             {
                 warnings.Add(
-                    $"Tag {route.Tag.Id.Value} orthogonal leader: " +
+                    $"Tag {route.Tag.Id.CompatValue()} orthogonal leader: " +
                     FriendlyTagError(exception));
             }
             return appliedU;
@@ -4430,7 +4430,7 @@ internal static class SmartTagRevitService
     {
         IndependentTag[] measurableTags = tags
             .Where(tag => tag.HasLeader && !tag.Pinned)
-            .GroupBy(tag => tag.Id.Value)
+            .GroupBy(tag => tag.Id.CompatValue())
             .Select(group => group.First())
             .ToArray();
         Dictionary<long, LayoutRect> bodyBounds = MeasureTagTextBoundsInOpenTransaction(
@@ -4465,7 +4465,7 @@ internal static class SmartTagRevitService
                     if (end is null) continue;
                     LayoutPoint head = Project(tag.TagHeadPosition, right, up);
                     double shoulderV = bodyBounds.TryGetValue(
-                        tag.Id.Value,
+                        tag.Id.CompatValue(),
                         out LayoutRect bounds)
                             ? (bounds.MinV + bounds.MaxV) * 0.5
                             : head.V;
@@ -4480,7 +4480,7 @@ internal static class SmartTagRevitService
             catch (Exception exception)
             {
                 warnings.Add(
-                    $"Tag {tag.Id.Value} final orthogonal leader: " +
+                    $"Tag {tag.Id.CompatValue()} final orthogonal leader: " +
                     FriendlyTagError(exception));
             }
         }
@@ -4499,7 +4499,7 @@ internal static class SmartTagRevitService
     {
         IndependentTag[] distinctTags = tags
             .Where(tag => tag.HasLeader && !tag.Pinned)
-            .GroupBy(tag => tag.Id.Value)
+            .GroupBy(tag => tag.Id.CompatValue())
             .Select(group => group.First())
             .ToArray();
         if (distinctTags.Length == 0) return;
@@ -4509,13 +4509,13 @@ internal static class SmartTagRevitService
             .Concat(additionalFixedTags ?? [])
             .Where(tag => tag is not null && tag.HasLeader)
             .Select(tag => tag!)
-            .GroupBy(tag => tag.Id.Value)
+            .GroupBy(tag => tag.Id.CompatValue())
             .Select(group => group.First())
             .ToArray();
         HashSet<long> fixedTagIds = (additionalFixedTags ?? [])
-            .Select(tag => tag.Id.Value)
+            .Select(tag => tag.Id.CompatValue())
             .ToHashSet();
-        if (fixedTag is not null) fixedTagIds.Add(fixedTag.Id.Value);
+        if (fixedTag is not null) fixedTagIds.Add(fixedTag.Id.CompatValue());
 
         Dictionary<long, LayoutRect> bodyBounds = MeasureTagTextBoundsInOpenTransaction(
             document,
@@ -4553,7 +4553,7 @@ internal static class SmartTagRevitService
                     if (end is not null)
                     {
                         LayoutPoint attachment = bodyBounds.TryGetValue(
-                            tag.Id.Value,
+                            tag.Id.CompatValue(),
                             out LayoutRect bounds)
                                 ? SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
                                     bounds,
@@ -4566,14 +4566,14 @@ internal static class SmartTagRevitService
                             end.Value,
                             TryGetReferenceHostBounds(
                                 reference, document, view, right, up),
-                            fixedTagIds.Contains(tag.Id.Value)));
+                            fixedTagIds.Contains(tag.Id.CompatValue())));
                     }
                 }
             }
             catch (Exception exception)
             {
                 warnings.Add(
-                    $"Tag {tag.Id.Value} straight/orthogonal leader analysis: " +
+                    $"Tag {tag.Id.CompatValue()} straight/orthogonal leader analysis: " +
                     FriendlyTagError(exception));
             }
         }
@@ -4606,7 +4606,7 @@ internal static class SmartTagRevitService
             bool sameHorizontalRow =
                 Math.Abs(route.Attachment.V - route.End.V) <= axisTolerance;
             bool crossesOtherBody = sameHorizontalRow && bodyBounds.Any(item =>
-                item.Key != route.Tag.Id.Value &&
+                item.Key != route.Tag.Id.CompatValue() &&
                 SegmentIntersectsRect(straight, item.Value.Expand(bodyClearance)));
             bool crossesOtherLeader = sameHorizontalRow && acceptedPaths
                 .Where((_, otherIndex) => otherIndex != index)
@@ -4671,7 +4671,7 @@ internal static class SmartTagRevitService
             catch (Exception exception)
             {
                 warnings.Add(
-                    $"Tag {route.Tag.Id.Value} straight/orthogonal leader: " +
+                    $"Tag {route.Tag.Id.CompatValue()} straight/orthogonal leader: " +
                     FriendlyTagError(exception));
             }
         }
@@ -4708,7 +4708,7 @@ internal static class SmartTagRevitService
     {
         IndependentTag[] distinctTags = tags
             .Where(tag => tag.HasLeader && !tag.Pinned)
-            .GroupBy(tag => tag.Id.Value)
+            .GroupBy(tag => tag.Id.CompatValue())
             .Select(group => group.First())
             .ToArray();
         if (distinctTags.Length == 0) return;
@@ -4726,7 +4726,7 @@ internal static class SmartTagRevitService
                 foreach (IndependentTag tag in distinctTags)
                 {
                     try { tag.TagOrientation = TagOrientation.Horizontal; }
-                    catch { failedTags.Add(tag.Id.Value); }
+                    catch { failedTags.Add(tag.Id.CompatValue()); }
                 }
             }
             document.Regenerate();
@@ -4754,7 +4754,7 @@ internal static class SmartTagRevitService
                 {
                     LayoutPoint head = Project(tag.TagHeadPosition, right, up);
                     double shoulderV = bodyBounds.TryGetValue(
-                        tag.Id.Value,
+                        tag.Id.CompatValue(),
                         out LayoutRect bounds)
                             ? (bounds.MinV + bounds.MaxV) * 0.5
                             : head.V;
@@ -4764,7 +4764,7 @@ internal static class SmartTagRevitService
                             tag, reference, document, view, right, up);
                         if (projectedEnd is null)
                         {
-                            failedTags.Add(tag.Id.Value);
+                            failedTags.Add(tag.Id.CompatValue());
                             continue;
                         }
                         try { tag.LeaderEndCondition = LeaderEndCondition.Free; }
@@ -4783,7 +4783,7 @@ internal static class SmartTagRevitService
                 }
                 catch
                 {
-                    failedTags.Add(tag.Id.Value);
+                    failedTags.Add(tag.Id.CompatValue());
                 }
             }
             document.Regenerate();
@@ -4821,7 +4821,7 @@ internal static class SmartTagRevitService
             {
                 LayoutPoint head = Project(tag.TagHeadPosition, right, up);
                 double shoulderV = bodyBounds is not null && bodyBounds.TryGetValue(
-                    tag.Id.Value,
+                    tag.Id.CompatValue(),
                     out LayoutRect bounds)
                         ? (bounds.MinV + bounds.MaxV) * 0.5
                         : head.V;
@@ -4840,7 +4840,7 @@ internal static class SmartTagRevitService
                         if (Math.Abs(end.V - head.V) <= tolerance ||
                             Math.Abs(end.V - shoulderV) <= tolerance)
                             continue;
-                        failed.Add(tag.Id.Value);
+                        failed.Add(tag.Id.CompatValue());
                         continue;
                     }
                     bool collapsedStraight =
@@ -4857,12 +4857,12 @@ internal static class SmartTagRevitService
                         orthogonalAtHead ||
                         orthogonalAtMeasuredBody)
                         continue;
-                    failed.Add(tag.Id.Value);
+                    failed.Add(tag.Id.CompatValue());
                 }
             }
             catch
             {
-                failed.Add(tag.Id.Value);
+                failed.Add(tag.Id.CompatValue());
             }
         }
         return failed;
@@ -4901,7 +4901,7 @@ internal static class SmartTagRevitService
         UIDocument uidoc = application.ActiveUIDocument
             ?? throw new InvalidOperationException("No active Revit project.");
         Document document = uidoc.Document;
-        if (document.ActiveView.Id.Value != snapshot.ViewId)
+        if (document.ActiveView.Id.CompatValue() != snapshot.ViewId)
         {
             throw new InvalidOperationException(
                 "The active view changed after preview. Return to the previewed view or refresh the preview.");
@@ -4938,7 +4938,7 @@ internal static class SmartTagRevitService
                 Reference? reference;
                 if (record.WillCreate)
                 {
-                    Element? element = document.GetElement(new ElementId(record.ElementId));
+                    Element? element = document.GetElement(PortableApi.ElementId(record.ElementId));
                     if (element is null)
                     {
                         skipped++;
@@ -4959,7 +4959,7 @@ internal static class SmartTagRevitService
                         snapshot.UpDirection);
                     tag = IndependentTag.Create(
                         document,
-                        new ElementId(tagTypeId),
+                        PortableApi.ElementId(tagTypeId),
                         document.ActiveView.Id,
                         reference,
                         false,
@@ -4969,7 +4969,7 @@ internal static class SmartTagRevitService
                 }
                 else
                 {
-                    if (document.GetElement(new ElementId(record.ExistingTagId)) is not IndependentTag existingTag)
+                    if (document.GetElement(PortableApi.ElementId(record.ExistingTagId)) is not IndependentTag existingTag)
                     {
                         skipped++;
                         continue;
@@ -5089,7 +5089,7 @@ internal static class SmartTagRevitService
             }
             catch (Exception exception)
             {
-                warnings.Add($"Tag {item.Tag.Id.Value} alignment: {FriendlyTagError(exception)}");
+                warnings.Add($"Tag {item.Tag.Id.CompatValue()} alignment: {FriendlyTagError(exception)}");
             }
         }
 
@@ -5187,7 +5187,7 @@ internal static class SmartTagRevitService
             }
             catch (Exception exception)
             {
-                warnings.Add($"Tag {item.Tag.Id.Value} leader: {FriendlyTagError(exception)}");
+                warnings.Add($"Tag {item.Tag.Id.CompatValue()} leader: {FriendlyTagError(exception)}");
             }
         }
         // Enabling the real project-family leader can change the family-side
@@ -5203,7 +5203,7 @@ internal static class SmartTagRevitService
             }
             catch (Exception exception)
             {
-                warnings.Add($"Tag {item.Tag.Id.Value} leader normalization: {FriendlyTagError(exception)}");
+                warnings.Add($"Tag {item.Tag.Id.CompatValue()} leader normalization: {FriendlyTagError(exception)}");
             }
         }
         if (replayAnalyzed)
@@ -6127,7 +6127,7 @@ internal static class SmartTagRevitService
             {
                 foreach (SmartTagRecord record in fixedCompanionRecords)
                 {
-                    if (document.GetElement(new ElementId(record.ExistingTagId)) is IndependentTag tag)
+                    if (document.GetElement(PortableApi.ElementId(record.ExistingTagId)) is IndependentTag tag)
                     {
                         try { tag.HasLeader = false; } catch { }
                     }
@@ -6135,7 +6135,7 @@ internal static class SmartTagRevitService
                 document.Regenerate();
                 foreach (SmartTagRecord record in fixedCompanionRecords)
                 {
-                    if (document.GetElement(new ElementId(record.ExistingTagId)) is not IndependentTag tag)
+                    if (document.GetElement(PortableApi.ElementId(record.ExistingTagId)) is not IndependentTag tag)
                         continue;
                     BoundingBoxXYZ? box = tag.get_BoundingBox(document.ActiveView);
                     if (box is null) continue;
@@ -6472,7 +6472,7 @@ internal static class SmartTagRevitService
                 maximumShift = Math.Min(maximumShift, upperLimit - halfHeight - row);
             }
             double collectiveShift = minimumShift <= maximumShift
-                ? Math.Clamp(0.0, minimumShift, maximumShift)
+                ? PortableMath.Clamp(0.0, minimumShift, maximumShift)
                 : (minimumShift + maximumShift) * 0.5;
             for (int offset = 0; offset < count; offset++)
             {
@@ -6863,7 +6863,7 @@ internal static class SmartTagRevitService
         double searchDistance = Math.Max(
             step * 6.0,
             Math.Min(settings.ColumnWidth * 0.30, maximumTagWidth * 4.0));
-        int attempts = Math.Clamp((int)Math.Ceiling(searchDistance / step) + 1, 2, 18);
+        int attempts = PortableMath.Clamp((int)Math.Ceiling(searchDistance / step) + 1, 2, 18);
         double bestRail = baseRail;
         int bestTextConflicts = int.MaxValue;
         int bestLeaderConflicts = int.MaxValue;
@@ -8249,8 +8249,8 @@ internal static class SmartTagRevitService
             double straightRange = Math.Min(
                 hostWidth * 0.40,
                 Math.Max(settings.Clearance * 1.5, 0.005));
-            double straightU = Math.Clamp(
-                input.Anchor.U + Math.Clamp(laneFactor, -1.0, 1.0) * straightRange,
+            double straightU = PortableMath.Clamp(
+                input.Anchor.U + PortableMath.Clamp(laneFactor, -1.0, 1.0) * straightRange,
                 input.ElementBounds.MinU,
                 input.ElementBounds.MaxU);
             return new LayoutPoint(straightU, input.Anchor.V);
@@ -8263,7 +8263,7 @@ internal static class SmartTagRevitService
             Math.Max(0.0, available) * 0.5,
             Math.Max(settings.Clearance * 0.75, 0.005));
         bool tagIsRight = headU >= input.Anchor.U;
-        double inward = hostWidth * 0.8 * Math.Clamp(laneFactor, 0.0, 1.0);
+        double inward = hostWidth * 0.8 * PortableMath.Clamp(laneFactor, 0.0, 1.0);
         // Free End begins at the host edge nearest the tag, then tries a few
         // tiny inward lanes. This shortens the route and prevents a leader from
         // unnecessarily traversing the host or nearby elements.
@@ -8278,8 +8278,8 @@ internal static class SmartTagRevitService
         double shiftedV = baseV;
         if (hostHeight > 1e-8)
         {
-            shiftedV = Math.Clamp(
-                baseV + Math.Clamp(verticalLaneFactor, -1.0, 1.0) * verticalRange,
+            shiftedV = PortableMath.Clamp(
+                baseV + PortableMath.Clamp(verticalLaneFactor, -1.0, 1.0) * verticalRange,
                 input.ElementBounds.MinV,
                 input.ElementBounds.MaxV);
         }
@@ -8361,7 +8361,7 @@ internal static class SmartTagRevitService
     private static IReadOnlyList<TagLayoutPlacement> MeasureNearHostReservations(
         Document document, SmartTagViewSnapshot snapshot, IReadOnlyList<AppliedTagWorkItem> moving)
     {
-        var movingIds = moving.Select(item => item.Tag.Id.Value).ToHashSet();
+        var movingIds = moving.Select(item => item.Tag.Id.CompatValue()).ToHashSet();
         HashSet<long> fixedFollowerAnchorIds = snapshot.Tags
             .Where(item => item.Layout.CanAnchorDuctFollowers &&
                            !item.WillCreate &&
@@ -8370,7 +8370,7 @@ internal static class SmartTagRevitService
             .ToHashSet();
         var fixedTags = new FilteredElementCollector(document, document.ActiveView.Id)
             .OfClass(typeof(IndependentTag)).Cast<IndependentTag>()
-            .Where(tag => !movingIds.Contains(tag.Id.Value)).ToList();
+            .Where(tag => !movingIds.Contains(tag.Id.CompatValue())).ToList();
         // Avoid a Revit regeneration/rollback when there are no fixed tags to measure.
         if (fixedTags.Count == 0) return [];
         var result = new List<TagLayoutPlacement>();
@@ -8405,17 +8405,17 @@ internal static class SmartTagRevitService
             var textBounds = new Dictionary<long, LayoutRect>();
             foreach (var route in routes)
             {
-                if (!textBounds.TryGetValue(route.Tag.Id.Value, out LayoutRect bounds))
+                if (!textBounds.TryGetValue(route.Tag.Id.CompatValue(), out LayoutRect bounds))
                 {
                     var box = route.Tag.get_BoundingBox(document.ActiveView);
                     if (box is null) continue;
                     bounds = ProjectBox(box, snapshot.RightDirection, snapshot.UpDirection);
-                    textBounds[route.Tag.Id.Value] = bounds;
+                    textBounds[route.Tag.Id.CompatValue()] = bounds;
                 }
-                result.Add(new TagLayoutPlacement(route.Tag.Id.Value, route.Head, route.End, route.Elbow,
+                result.Add(new TagLayoutPlacement(route.Tag.Id.CompatValue(), route.Head, route.End, route.Elbow,
                     bounds, route.HasElbow, true, false, "", "")
                 {
-                    CanAnchorDuctFollowers = fixedFollowerAnchorIds.Contains(route.Tag.Id.Value)
+                    CanAnchorDuctFollowers = fixedFollowerAnchorIds.Contains(route.Tag.Id.CompatValue())
                 });
             }
         }
@@ -8548,8 +8548,8 @@ internal static class SmartTagRevitService
         // viewport is copied. Refresh and synchronously redraw several times;
         // the bounded adaptive wait keeps a 900-tag view responsive while
         // ensuring that temporary project-family tags are present in the image.
-        int passCount = Math.Clamp((appliedTagCount + 79) / 80, 2, 6);
-        int totalWaitMilliseconds = Math.Clamp(
+        int passCount = PortableMath.Clamp((appliedTagCount + 79) / 80, 2, 6);
+        int totalWaitMilliseconds = PortableMath.Clamp(
             180 + appliedTagCount * 3,
             320,
             1400);
@@ -8578,7 +8578,7 @@ internal static class SmartTagRevitService
         XYZ right,
         XYZ up,
         LayoutRect frame,
-        IReadOnlySet<long>? elementFilter)
+        ISet<long>? elementFilter)
     {
         var ductEligibility = new Dictionary<long, bool>();
         List<SmartTagRecord> result = CollectExistingTags(
@@ -8601,7 +8601,7 @@ internal static class SmartTagRevitService
 
         IEnumerable<Element> elements = elementFilter is { Count: > 0 }
             ? elementFilter
-                .Select(id => document.GetElement(new ElementId(id)))
+                .Select(id => document.GetElement(PortableApi.ElementId(id)))
                 .Where(element => element is not null)
                 .Cast<Element>()
             : new FilteredElementCollector(document, view.Id)
@@ -8609,16 +8609,16 @@ internal static class SmartTagRevitService
                 .WhereElementIsNotElementType();
         foreach (Element element in elements)
         {
-            if (elementFilter is not null && !elementFilter.Contains(element.Id.Value))
+            if (elementFilter is not null && !elementFilter.Contains(element.Id.CompatValue()))
             {
                 continue;
             }
             SupportedCategory? category = Classify(element);
-            if (category is null || alreadyTagged.Contains(element.Id.Value))
+            if (category is null || alreadyTagged.Contains(element.Id.CompatValue()))
             {
                 continue;
             }
-            if (element.Category?.Id.Value == (long)BuiltInCategory.OST_DuctCurves &&
+            if (element.Category?.Id.CompatValue() == (long)BuiltInCategory.OST_DuctCurves &&
                 !IsEligibleDuctChange(element, ductEligibility))
             {
                 continue;
@@ -8634,7 +8634,7 @@ internal static class SmartTagRevitService
             (double Width, double Height) size = sizeByGroup.TryGetValue(category.Value.Key, out var known)
                 ? known
                 : EstimateTagSize(label, view.Scale);
-            long tagKey = CreateProvisionalTagKey(element.Id.Value);
+            long tagKey = CreateProvisionalTagKey(element.Id.CompatValue());
             LayoutRect elementBounds = ProjectBox(elementBox, right, up);
             if (!elementBounds.Intersects(frame, 0.0))
             {
@@ -8642,7 +8642,7 @@ internal static class SmartTagRevitService
             }
             var input = new LayoutTagInput(
                 tagKey,
-                element.Id.Value,
+                element.Id.CompatValue(),
                 label,
                 category.Value.Key,
                 Project(anchor, right, up),
@@ -8651,7 +8651,7 @@ internal static class SmartTagRevitService
                 size.Height,
                 elementBounds)
             {
-                PreferLocalClustering = element.Category?.Id.Value ==
+                PreferLocalClustering = element.Category?.Id.CompatValue() ==
                                         (long)BuiltInCategory.OST_DuctCurves,
                 CanAnchorDuctFollowers = IsDuctFollowerAnchorCategory(element)
             };
@@ -8659,7 +8659,7 @@ internal static class SmartTagRevitService
                 tagKey,
                 0,
                 0,
-                element.Id.Value,
+                element.Id.CompatValue(),
                 true,
                 category.Value.Name,
                 anchor,
@@ -8675,7 +8675,7 @@ internal static class SmartTagRevitService
         XYZ right,
         XYZ up,
         LayoutRect frame,
-        IReadOnlySet<long>? elementFilter,
+        ISet<long>? elementFilter,
         IDictionary<long, bool> ductEligibility)
     {
         var result = new List<SmartTagRecord>();
@@ -8699,12 +8699,12 @@ internal static class SmartTagRevitService
             {
                 continue;
             }
-            if (element.Category?.Id.Value == (long)BuiltInCategory.OST_DuctCurves &&
+            if (element.Category?.Id.CompatValue() == (long)BuiltInCategory.OST_DuctCurves &&
                 !IsEligibleDuctChange(element, ductEligibility))
             {
                 continue;
             }
-            if (elementFilter is not null && !elementFilter.Contains(element.Id.Value))
+            if (elementFilter is not null && !elementFilter.Contains(element.Id.CompatValue()))
             {
                 continue;
             }
@@ -8732,8 +8732,8 @@ internal static class SmartTagRevitService
             (double tagWidth, double tagHeight) = EstimateTagSize(label, view.Scale);
 
             var input = new LayoutTagInput(
-                tag.Id.Value,
-                element.Id.Value,
+                tag.Id.CompatValue(),
+                element.Id.CompatValue(),
                 label,
                 category.Value.Key,
                 Project(anchor, right, up),
@@ -8742,15 +8742,15 @@ internal static class SmartTagRevitService
                 tagHeight,
                 elementBounds)
             {
-                PreferLocalClustering = element.Category?.Id.Value ==
+                PreferLocalClustering = element.Category?.Id.CompatValue() ==
                                         (long)BuiltInCategory.OST_DuctCurves,
                 CanAnchorDuctFollowers = IsDuctFollowerAnchorCategory(element)
             };
             result.Add(new SmartTagRecord(
-                tag.Id.Value,
-                tag.Id.Value,
-                tag.GetTypeId().Value,
-                element.Id.Value,
+                tag.Id.CompatValue(),
+                tag.Id.CompatValue(),
+                tag.GetTypeId().CompatValue(),
+                element.Id.CompatValue(),
                 false,
                 category.Value.Name,
                 anchor,
@@ -8763,7 +8763,7 @@ internal static class SmartTagRevitService
     private static long CreateProvisionalTagKey(long elementId) => -Math.Abs(elementId);
 
     private static bool IsDuctFollowerAnchorCategory(Element element) =>
-        element.Category?.Id.Value is
+        element.Category?.Id.CompatValue() is
             (long)BuiltInCategory.OST_DuctTerminal or
             (long)BuiltInCategory.OST_DuctAccessory;
 
@@ -8771,8 +8771,8 @@ internal static class SmartTagRevitService
     {
         string[] lines = label.Replace("\r", string.Empty).Split('\n');
         int longest = Math.Max(8, lines.Max(line => line.Length));
-        double widthMm = Math.Clamp(longest * 1.05 + 4.0, 15.0, 58.0);
-        double heightMm = Math.Clamp(lines.Length * 2.5 + 1.0, 3.5, 13.0);
+        double widthMm = PortableMath.Clamp(longest * 1.05 + 4.0, 15.0, 58.0);
+        double heightMm = PortableMath.Clamp(lines.Length * 2.5 + 1.0, 3.5, 13.0);
         double scale = Math.Max(1, viewScale) / 304.8;
         return (widthMm * scale, heightMm * scale);
     }
@@ -8791,7 +8791,7 @@ internal static class SmartTagRevitService
     {
         double[] ordered = source.OrderBy(value => value).ToArray();
         if (ordered.Length == 0) return 0.1;
-        double index = Math.Clamp(fraction, 0.0, 1.0) * (ordered.Length - 1);
+        double index = PortableMath.Clamp(fraction, 0.0, 1.0) * (ordered.Length - 1);
         int lower = (int)Math.Floor(index);
         int upper = (int)Math.Ceiling(index);
         double weight = index - lower;
@@ -8804,7 +8804,7 @@ internal static class SmartTagRevitService
         Element duct,
         IDictionary<long, bool> cache)
     {
-        if (cache.TryGetValue(duct.Id.Value, out bool known)) return known;
+        if (cache.TryGetValue(duct.Id.CompatValue(), out bool known)) return known;
         bool eligible;
         try
         {
@@ -8820,10 +8820,10 @@ internal static class SmartTagRevitService
                     other.Value,
                     oneMillimetre);
             });
-            bool elevationChanged = double.IsFinite(currentElevation) && neighbours.Any(neighbour =>
+            bool elevationChanged = PortableMath.IsFinite(currentElevation) && neighbours.Any(neighbour =>
             {
                 double otherElevation = GetCurveMidpointElevation(neighbour);
-                return double.IsFinite(otherElevation) &&
+                return PortableMath.IsFinite(otherElevation) &&
                        Math.Abs(currentElevation - otherElevation) > oneMillimetre;
             });
             double length = duct.Location is LocationCurve location && location.Curve.IsBound
@@ -8840,7 +8840,7 @@ internal static class SmartTagRevitService
             // silently falling back to tagging every ordinary duct.
             eligible = false;
         }
-        cache[duct.Id.Value] = eligible;
+        cache[duct.Id.CompatValue()] = eligible;
         return eligible;
     }
 
@@ -8894,12 +8894,12 @@ internal static class SmartTagRevitService
         {
             Element? owner = connected.Owner;
             if (owner is null || owner.Id == duct.Id) continue;
-            if (owner.Category?.Id.Value == (long)BuiltInCategory.OST_DuctCurves)
+            if (owner.Category?.Id.CompatValue() == (long)BuiltInCategory.OST_DuctCurves)
             {
-                result[owner.Id.Value] = owner;
+                result[owner.Id.CompatValue()] = owner;
                 continue;
             }
-            if (owner.Category?.Id.Value != (long)BuiltInCategory.OST_DuctFitting)
+            if (owner.Category?.Id.CompatValue() != (long)BuiltInCategory.OST_DuctFitting)
                 continue;
             ConnectorManager? fittingManager = TryGetConnectorManager(owner);
             if (fittingManager is null) continue;
@@ -8908,8 +8908,8 @@ internal static class SmartTagRevitService
             {
                 Element? adjacent = fittingReference.Owner;
                 if (adjacent is null || adjacent.Id == duct.Id) continue;
-                if (adjacent.Category?.Id.Value == (long)BuiltInCategory.OST_DuctCurves)
-                    result[adjacent.Id.Value] = adjacent;
+                if (adjacent.Category?.Id.CompatValue() == (long)BuiltInCategory.OST_DuctCurves)
+                    result[adjacent.Id.CompatValue()] = adjacent;
             }
         }
         return result.Values.ToList();
@@ -8990,11 +8990,11 @@ internal static class SmartTagRevitService
                 continue;
             }
             if (knownMepBounds is not null &&
-                knownMepBounds.TryGetValue(element.Id.Value, out LayoutRect knownBounds))
+                knownMepBounds.TryGetValue(element.Id.CompatValue(), out LayoutRect knownBounds))
             {
                 if (knownBounds.Intersects(frame, 0.0))
                 {
-                    result.Add(new LayoutObstacle(element.Id.Value, knownBounds));
+                    result.Add(new LayoutObstacle(element.Id.CompatValue(), knownBounds));
                 }
                 continue;
             }
@@ -9006,7 +9006,7 @@ internal static class SmartTagRevitService
             LayoutRect bounds = ProjectBox(box, right, up);
             if (bounds.Intersects(frame, 0.0))
             {
-                result.Add(new LayoutObstacle(element.Id.Value, bounds));
+                result.Add(new LayoutObstacle(element.Id.CompatValue(), bounds));
             }
         }
 
@@ -9024,7 +9024,7 @@ internal static class SmartTagRevitService
             IEnumerable<Element> linkedElements;
             try
             {
-                linkedElements = new FilteredElementCollector(document, view.Id, link.Id)
+                linkedElements = PortableApi.LinkedCollector(document, view.Id, link)
                     .WherePasses(linkedMepFilter)
                     .WhereElementIsNotElementType()
                     .ToElements();
@@ -9045,7 +9045,7 @@ internal static class SmartTagRevitService
                 LayoutRect bounds = ProjectBox(box, linkTransform, right, up);
                 if (!bounds.Intersects(frame, 0.0)) continue;
                 result.Add(new LayoutObstacle(
-                    CreateLinkedObstacleKey(link.Id.Value, linkedElement.Id.Value),
+                    CreateLinkedObstacleKey(link.Id.CompatValue(), linkedElement.Id.CompatValue()),
                     bounds));
             }
         }
@@ -9089,9 +9089,9 @@ internal static class SmartTagRevitService
             long modelCategoryId = long.TryParse(group.Key, out long parsed) ? parsed : 0;
             long tagCategoryId = GetTagCategoryId(modelCategoryId);
             List<SmartTagTypeInfo> types = projectTagTypes
-                .Where(type => type.Category?.Id.Value == tagCategoryId)
+                .Where(type => type.Category?.Id.CompatValue() == tagCategoryId)
                 .Select(type => new SmartTagTypeInfo(
-                    type.Id.Value,
+                    type.Id.CompatValue(),
                     $"{type.FamilyName} : {type.Name}"))
                 .OrderBy(type => type.Name, StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
@@ -9130,7 +9130,7 @@ internal static class SmartTagRevitService
 
     private static SupportedCategory? Classify(Element? element)
     {
-        long category = element?.Category?.Id.Value ?? long.MaxValue;
+        long category = element?.Category?.Id.CompatValue() ?? long.MaxValue;
         bool supported = category switch
         {
             (long)BuiltInCategory.OST_DuctCurves or
@@ -9149,7 +9149,7 @@ internal static class SmartTagRevitService
 
     private static bool IsMepObstacle(Element? element)
     {
-        long category = element?.Category?.Id.Value ?? long.MaxValue;
+        long category = element?.Category?.Id.CompatValue() ?? long.MaxValue;
         return category switch
         {
             (long)BuiltInCategory.OST_DuctCurves or
@@ -9181,9 +9181,9 @@ internal static class SmartTagRevitService
 
     private sealed class SupportedMepSelectionFilter : ISelectionFilter
     {
-        private readonly IReadOnlySet<string>? _selectedCategoryKeys;
+        private readonly ISet<string>? _selectedCategoryKeys;
 
-        public SupportedMepSelectionFilter(IReadOnlySet<string>? selectedCategoryKeys = null)
+        public SupportedMepSelectionFilter(ISet<string>? selectedCategoryKeys = null)
         {
             _selectedCategoryKeys = selectedCategoryKeys;
         }

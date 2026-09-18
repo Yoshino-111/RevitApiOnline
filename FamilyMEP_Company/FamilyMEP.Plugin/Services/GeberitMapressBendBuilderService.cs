@@ -799,7 +799,7 @@ internal static class GeberitMapressBendBuilderService
         PipeFittingBuilderResult result)
     {
         document.Regenerate();
-        if (document.OwnerFamily.FamilyCategory.Id.Value
+        if (document.OwnerFamily.FamilyCategory.Id.CompatValue()
             != (long)BuiltInCategory.OST_PipeFitting)
             throw new InvalidOperationException(
                 "Catalog Family category is not Pipe Fittings.");
@@ -1651,7 +1651,7 @@ internal static class GeberitMapressBendBuilderService
                     name,
                     StringComparison.OrdinalIgnoreCase));
         if (existing is not null) return existing;
-#if REVIT2020 || REVIT2021 || REVIT2022 || REVIT2023
+#if REVIT2020 || REVIT2021 || REVIT2022
         return manager.AddParameter(
             name,
             BuiltInParameterGroup.PG_GEOMETRY,
@@ -1676,7 +1676,7 @@ internal static class GeberitMapressBendBuilderService
                     name,
                     StringComparison.OrdinalIgnoreCase));
         if (existing is not null) return existing;
-#if REVIT2020 || REVIT2021 || REVIT2022 || REVIT2023
+#if REVIT2020 || REVIT2021 || REVIT2022
         return manager.AddParameter(
             name,
             BuiltInParameterGroup.PG_GEOMETRY,

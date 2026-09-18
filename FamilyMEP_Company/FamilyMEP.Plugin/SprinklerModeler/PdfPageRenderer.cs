@@ -28,9 +28,9 @@ internal static class PdfPageRenderer
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
-        startInfo.ArgumentList.Add(pdfPath);
-        startInfo.ArgumentList.Add(cachePath);
-        startInfo.ArgumentList.Add(targetWidth.ToString());
+        startInfo.AddArgument(pdfPath);
+        startInfo.AddArgument(cachePath);
+        startInfo.AddArgument(targetWidth.ToString());
 
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The FamilyMEP PDF renderer could not be started.");
@@ -64,7 +64,7 @@ internal static class PdfPageRenderer
         FileInfo source = new(pdfPath);
         string fingerprint =
             $"{source.FullName.ToUpperInvariant()}|{source.Length}|{source.LastWriteTimeUtc.Ticks}|{width}";
-        string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint)))[..20];
+        string key = PortableApi.ToHexString(PortableApi.HashData(Encoding.UTF8.GetBytes(fingerprint)))[..20];
         string folder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "FamilyMEP",
@@ -91,7 +91,7 @@ internal static class PdfPageRenderer
         foreach (string line in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
         {
             if (line.StartsWith("pages=", StringComparison.OrdinalIgnoreCase) &&
-                uint.TryParse(line.AsSpan(6), out uint pages))
+                uint.TryParse(line.Substring(6), out uint pages))
                 return pages;
         }
         return 1;

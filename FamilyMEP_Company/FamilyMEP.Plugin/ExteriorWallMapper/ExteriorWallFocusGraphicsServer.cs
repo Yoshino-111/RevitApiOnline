@@ -40,7 +40,7 @@ internal sealed class ExteriorWallFocusGraphicsServer : IDirectContext3DServer
         FocusTriangle[] snapshot = triangles.ToArray();
         lock (_sync)
         {
-            _viewId = view.Id.Value;
+            _viewId = view.Id.CompatValue();
             _triangles = snapshot;
             _outline = CreateOutline(snapshot);
             _renderCallCount = 0;
@@ -60,7 +60,7 @@ internal sealed class ExteriorWallFocusGraphicsServer : IDirectContext3DServer
 
     public bool CanExecute(View dBView)
     {
-        lock (_sync) return dBView.Id.Value == _viewId && _triangles.Length > 0;
+        lock (_sync) return dBView.Id.CompatValue() == _viewId && _triangles.Length > 0;
     }
 
     public Outline GetBoundingBox(View dBView)
@@ -78,7 +78,7 @@ internal sealed class ExteriorWallFocusGraphicsServer : IDirectContext3DServer
         FocusTriangle[] snapshot;
         lock (_sync)
         {
-            if (dBView.Id.Value != _viewId || _triangles.Length == 0) return;
+            if (dBView.Id.CompatValue() != _viewId || _triangles.Length == 0) return;
             snapshot = _triangles;
         }
 

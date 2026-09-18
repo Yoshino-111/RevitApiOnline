@@ -1,3 +1,8 @@
+#if REVIT2020 || REVIT2021 || REVIT2022
+global using TroxParameterType = Autodesk.Revit.DB.ParameterType;
+#else
+global using TroxParameterType = Autodesk.Revit.DB.ForgeTypeId;
+#endif
 using System.Globalization;
 using System.Text;
 using Autodesk.Revit.ApplicationServices;
@@ -347,7 +352,7 @@ internal static class TroxKa2BuilderService
     private static Parameters CreateParameters(FamilyManager manager)
     {
         FamilyParameter Length(string name) =>
-            EnsureParameter(manager, name, SpecTypeId.Length);
+            EnsureParameter(manager, name, TroxLengthType);
         FamilyParameter bSelector = Length("FT_LE_ZZ_BSel");
         FamilyParameter hSelector = Length("FT_LE_ZZ_HSel");
         return new Parameters(
@@ -559,12 +564,12 @@ internal static class TroxKa2BuilderService
             FamilyParameter heightInput = EnsureParameter(
                 manager,
                 "FT_LE_ZZ_HIn",
-                SpecTypeId.Length,
+                TroxLengthType,
                 isInstance: true);
             FamilyParameter height = EnsureParameter(
                 manager,
                 "FT_LE_ZZ_H",
-                SpecTypeId.Length,
+                TroxLengthType,
                 isInstance: true);
             SetFamilyFormula(manager, height, "FT_LE_ZZ_HIn");
             FamilyParameter actL = FixedLength(
@@ -1495,10 +1500,16 @@ internal static class TroxKa2BuilderService
             visible.Set(0);
     }
 
+#if REVIT2020 || REVIT2021 || REVIT2022
+    private static TroxParameterType TroxLengthType => ParameterType.Length;
+#else
+    private static TroxParameterType TroxLengthType => SpecTypeId.Length;
+#endif
+
     private static FamilyParameter EnsureParameter(
         FamilyManager manager,
         string name,
-        ForgeTypeId dataType,
+        TroxParameterType dataType,
         bool isInstance = false)
     {
         FamilyParameter? existing = manager.Parameters
@@ -1510,7 +1521,11 @@ internal static class TroxKa2BuilderService
         return existing
             ?? manager.AddParameter(
                 name,
+                #if REVIT2020 || REVIT2021 || REVIT2022
+                BuiltInParameterGroup.PG_GEOMETRY,
+#else
                 GroupTypeId.Geometry,
+#endif
                 dataType,
                 isInstance);
     }
@@ -1524,7 +1539,7 @@ internal static class TroxKa2BuilderService
         FamilyParameter parameter = EnsureParameter(
             manager,
             name,
-            SpecTypeId.Length,
+            TroxLengthType,
             isInstance);
         SetFamilyFormula(manager, parameter, formula);
         return parameter;

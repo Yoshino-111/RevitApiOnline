@@ -1,385 +1,166 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Drain Connection Cases — Horizontal Main"
-        Width="940" Height="850" MinWidth="860" MinHeight="700"
-        WindowStartupLocation="CenterOwner" Background="#F3F4F5"
+        Title="Drain Connection" Width="920" Height="700" MinWidth="860" MinHeight="640"
+        WindowStartupLocation="CenterOwner" Background="#F3F5F7"
         FontFamily="Segoe UI" ResizeMode="CanResizeWithGrip">
     <Window.Resources>
-        <SolidColorBrush x:Key="Border" Color="#D5DADF"/>
+        <SolidColorBrush x:Key="Border" Color="#D8DEE5"/>
         <SolidColorBrush x:Key="Ink" Color="#20262D"/>
         <SolidColorBrush x:Key="Soft" Color="#68727D"/>
         <SolidColorBrush x:Key="Blue" Color="#1473E6"/>
         <Style TargetType="Button">
-            <Setter Property="Padding" Value="13,8"/>
-            <Setter Property="Background" Value="#F4F6F8"/>
-            <Setter Property="BorderBrush" Value="#C8CED4"/>
-            <Setter Property="Foreground" Value="{StaticResource Ink}"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-        </Style>
-        <Style TargetType="TextBox">
-            <Setter Property="Padding" Value="9,7"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-        </Style>
-        <Style TargetType="ComboBox">
-            <Setter Property="Padding" Value="8,6"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+            <Setter Property="Padding" Value="12,7"/><Setter Property="Background" Value="#F5F7F9"/>
+            <Setter Property="BorderBrush" Value="#C8D0D8"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="{StaticResource Blue}"/>
-            <Setter Property="BorderBrush" Value="#0F62C4"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Padding" Value="18,11"/>
+            <Setter Property="Background" Value="{StaticResource Blue}"/><Setter Property="BorderBrush" Value="#0F62C4"/><Setter Property="Foreground" Value="White"/>
         </Style>
-        <Style x:Key="Card" TargetType="Border">
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="7"/>
-            <Setter Property="Padding" Value="10"/>
-            <Setter Property="Margin" Value="0,0,0,9"/>
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="31"/><Setter Property="Padding" Value="8,4"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Border}"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="31"/><Setter Property="Padding" Value="7,3"/><Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+        </Style>
+        <Style x:Key="CaseCard" TargetType="Border">
+            <Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="Padding" Value="7"/><Setter Property="Margin" Value="4"/><Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/><Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Margin" Value="0,0,0,3"/>
+        </Style>
+        <Style x:Key="Validation" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/><Setter Property="Margin" Value="0,0,8,4"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/>
         </Style>
     </Window.Resources>
 
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="64"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="70"/>
-        </Grid.RowDefinitions>
-
+        <Grid.RowDefinitions><RowDefinition Height="54"/><RowDefinition Height="*"/><RowDefinition Height="58"/></Grid.RowDefinitions>
         <Border Grid.Row="0" Background="White" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-            <Grid Margin="18,0">
+            <Grid Margin="16,0">
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="DRAIN CONNECTION CASES — HORIZONTAL MAIN"
-                               FontSize="20" FontWeight="Bold" Foreground="{StaticResource Ink}"/>
-                    <TextBlock Text="C# automatic gravity routing • Case-based pipe and fitting workflow"
-                               FontSize="12" Foreground="{StaticResource Soft}" Margin="0,3,0,0"/>
+                    <TextBlock Text="DRAIN CONNECTION" FontSize="18" FontWeight="Bold" Foreground="{StaticResource Ink}"/>
+                    <TextBlock Text="Choose a case, pick device and main, then create." FontSize="11" Foreground="{StaticResource Soft}"/>
                 </StackPanel>
-                <Border HorizontalAlignment="Right" VerticalAlignment="Center" Padding="12,7"
-                        CornerRadius="6" Background="#EEF5FD" BorderBrush="#C9DDF6" BorderThickness="1">
-                    <TextBlock Text="Revit 2025 • C# Modeless" Foreground="#245C93" FontWeight="SemiBold"/>
+                <Border HorizontalAlignment="Right" VerticalAlignment="Center" Padding="10,5" CornerRadius="5" Background="#EEF5FD" BorderBrush="#C9DDF6" BorderThickness="1">
+                    <TextBlock x:Name="runtime_badge_text" Text="Revit • Drain" Foreground="#245C93" FontSize="11" FontWeight="SemiBold"/>
                 </Border>
             </Grid>
         </Border>
 
         <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="270"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
-            <Border Grid.Column="0" Background="#F8F9FA" BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
-                <DockPanel Margin="14">
-                    <TextBlock DockPanel.Dock="Top" Text="CASE LIBRARY" FontWeight="Bold"
-                               FontSize="14" Margin="2,0,0,11"/>
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel>
-                            <Border x:Name="case01_card" Style="{StaticResource Card}" BorderBrush="{StaticResource Blue}" BorderThickness="2" Cursor="Hand">
-                                <StackPanel>
-                                    <Grid>
-                                        <Border Width="32" Height="32" CornerRadius="16" Background="#E8F2FF" HorizontalAlignment="Left">
-                                            <TextBlock Text="01" Foreground="{StaticResource Blue}" FontWeight="Bold"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <StackPanel Margin="42,0,0,0">
-                                            <TextBlock Text="AUTO WYE TO DRAIN" FontWeight="Bold"/>
-                                            <TextBlock Text="Horizontal main • Automatic side" Foreground="{StaticResource Soft}" FontSize="11"/>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Border Height="112" Margin="0,10,0,8" CornerRadius="5" ClipToBounds="True">
-                                        <Image x:Name="case_thumb_image" Stretch="UniformToFill"/>
-                                    </Border>
-                                    <TextBlock Text="●  Ready" Foreground="#238A46"/>
-                                </StackPanel>
-                            </Border>
-                            <Border x:Name="case02_card" Style="{StaticResource Card}" Background="White" Cursor="Hand">
-                                <StackPanel>
-                                    <Grid>
-                                        <Border Width="32" Height="32" CornerRadius="16" Background="#EEF2F6" HorizontalAlignment="Left">
-                                            <TextBlock Text="02" Foreground="#52606D" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <StackPanel Margin="42,0,0,0">
-                                            <TextBlock Text="45° ELBOW TO WYE" FontWeight="Bold"/>
-                                            <TextBlock Text="Straight branch • Near-main elbow" Foreground="{StaticResource Soft}" FontSize="11"/>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Border Height="88" Margin="0,10,0,8" CornerRadius="5" Background="#999E7D">
-                                        <Viewbox Stretch="Uniform">
-                                            <Canvas Width="210" Height="82">
-                                                <Line X1="35" Y1="5" X2="35" Y2="77" Stroke="#303338" StrokeThickness="10" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                                <Polyline Points="35,48 62,22 174,22" Stroke="#303338" StrokeThickness="8" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                                <Ellipse Canvas.Left="168" Canvas.Top="12" Width="21" Height="21" Fill="#555B61" Stroke="#25282B" StrokeThickness="2"/>
-                                                <Line X1="35" Y1="48" X2="62" Y2="22" Stroke="#E7E9EA" StrokeThickness="2"/>
-                                            </Canvas>
-                                        </Viewbox>
-                                    </Border>
-                                    <TextBlock Text="●  Ready" Foreground="#238A46"/>
-                                </StackPanel>
-                            </Border>
-                            <Border x:Name="case03_card" Style="{StaticResource Card}" Background="White" Cursor="Hand">
-                                <StackPanel>
-                                    <Grid>
-                                        <Border Width="32" Height="32" CornerRadius="16" Background="#EEF2F6" HorizontalAlignment="Left">
-                                            <TextBlock Text="03" Foreground="#52606D" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <StackPanel Margin="42,0,0,0">
-                                            <TextBlock Text="DEVICE ABOVE MAIN" FontWeight="Bold"/>
-                                            <TextBlock Text="Vertical plane • 45° elbow to Y" Foreground="{StaticResource Soft}" FontSize="11"/>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Border Height="88" Margin="0,10,0,8" CornerRadius="5" Background="#999E7D">
-                                        <Viewbox Stretch="Uniform">
-                                            <Canvas Width="210" Height="82">
-                                                <Line X1="15" Y1="65" X2="195" Y2="65" Stroke="#303338" StrokeThickness="10" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                                <Polyline Points="62,10 62,34 92,65" Stroke="#303338" StrokeThickness="8" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                                <Ellipse Canvas.Left="51" Canvas.Top="1" Width="22" Height="15" Fill="#555B61" Stroke="#25282B" StrokeThickness="2"/>
-                                                <Line X1="62" Y1="34" X2="92" Y2="65" Stroke="#E7E9EA" StrokeThickness="2"/>
-                                            </Canvas>
-                                        </Viewbox>
-                                    </Border>
-                                    <TextBlock Text="●  Ready" Foreground="#238A46"/>
-                                </StackPanel>
-                            </Border>
-                            <Border x:Name="case04_card" Style="{StaticResource Card}" Background="White" Cursor="Hand">
-                                <StackPanel>
-                                    <Grid>
-                                        <Border Width="32" Height="32" CornerRadius="16" Background="#EEF2F6" HorizontalAlignment="Left">
-                                            <TextBlock Text="04" Foreground="#52606D" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <StackPanel Margin="42,0,0,0">
-                                            <TextBlock Text="CONNECT TO MAIN END" FontWeight="Bold"/>
-                                            <TextBlock Text="Open endpoint • Two 45° turn" Foreground="{StaticResource Soft}" FontSize="11"/>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Border Height="88" Margin="0,10,0,8" CornerRadius="5" Background="#999E7D">
-                                        <Viewbox Stretch="Uniform">
-                                            <Canvas Width="210" Height="82">
-                                                <Polyline Points="38,76 38,48 68,18 176,18" Stroke="#303338" StrokeThickness="9" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                                <Ellipse Canvas.Left="168" Canvas.Top="8" Width="22" Height="22" Fill="#555B61" Stroke="#25282B" StrokeThickness="2"/>
-                                                <Line X1="38" Y1="48" X2="68" Y2="18" Stroke="#E7E9EA" StrokeThickness="2"/>
-                                            </Canvas>
-                                        </Viewbox>
-                                    </Border>
-                                    <TextBlock Text="●  Ready" Foreground="#238A46"/>
-                                </StackPanel>
-                            </Border>
-                            <Border x:Name="case05_card" Style="{StaticResource Card}" Background="White" Cursor="Hand">
-                                <StackPanel>
-                                    <Grid>
-                                        <Border Width="32" Height="32" CornerRadius="16" Background="#EEF2F6" HorizontalAlignment="Left">
-                                            <TextBlock Text="05" Foreground="#52606D" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <StackPanel Margin="42,0,0,0">
-                                            <TextBlock Text="ROLLED PIPE-DOWN BRANCH" FontWeight="Bold"/>
-                                            <TextBlock Text="Pick main point • A + B • Break only" Foreground="{StaticResource Soft}" FontSize="11"/>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Border Height="88" Margin="0,10,0,8" CornerRadius="5" Background="#999E7D">
-                                        <Viewbox Stretch="Uniform">
-                                            <Canvas Width="210" Height="82">
-                                                <Line X1="150" Y1="4" X2="150" Y2="78" Stroke="#303338" StrokeThickness="10" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                                <Polyline Points="150,55 105,24 62,24 62,8" Stroke="#303338" StrokeThickness="8" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                                <Ellipse Canvas.Left="51" Canvas.Top="1" Width="22" Height="15" Fill="#555B61" Stroke="#25282B" StrokeThickness="2"/>
-                                                <Line X1="150" Y1="55" X2="105" Y2="24" Stroke="#E7E9EA" StrokeThickness="2"/>
-                                            </Canvas>
-                                        </Viewbox>
-                                    </Border>
-                                    <TextBlock Text="●  Ready" Foreground="#238A46"/>
-                                </StackPanel>
-                            </Border>
-                            <Border x:Name="case06_card" Style="{StaticResource Card}" Background="White" Cursor="Hand">
-                                <StackPanel>
-                                    <Grid>
-                                        <Border Width="32" Height="32" CornerRadius="16" Background="#EEF2F6" HorizontalAlignment="Left">
-                                            <TextBlock Text="06" Foreground="#52606D" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <StackPanel Margin="42,0,0,0">
-                                            <TextBlock Text="45° ELBOW AT MAIN END" FontWeight="Bold"/>
-                                            <TextBlock Text="Case 01 route • No Y" Foreground="{StaticResource Soft}" FontSize="11"/>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Border Height="88" Margin="0,10,0,8" CornerRadius="5" Background="#999E7D">
-                                        <Viewbox Stretch="Uniform">
-                                            <Canvas Width="210" Height="82">
-                                                <Line X1="145" Y1="5" X2="145" Y2="77" Stroke="#303338" StrokeThickness="10" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                                <Polyline Points="145,48 112,22 42,22" Stroke="#303338" StrokeThickness="8" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                                <Ellipse Canvas.Left="31" Canvas.Top="12" Width="22" Height="22" Fill="#555B61" Stroke="#25282B" StrokeThickness="2"/>
-                                                <Line X1="145" Y1="48" X2="112" Y2="22" Stroke="#E7E9EA" StrokeThickness="2"/>
-                                            </Canvas>
-                                        </Viewbox>
-                                    </Border>
-                                    <TextBlock Text="●  Ready" Foreground="#238A46"/>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-                    </ScrollViewer>
-                </DockPanel>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="350"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Background="#F8F9FB" BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions><RowDefinition Height="28"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <TextBlock Text="CHOOSE CASE" FontSize="12" FontWeight="Bold" Margin="5,4,0,0"/>
+                    <UniformGrid Grid.Row="1" Columns="2" Rows="3">
+                        <Border x:Name="case01_card" Style="{StaticResource CaseCard}" BorderBrush="{StaticResource Blue}" BorderThickness="2">
+                            <Grid><Grid.RowDefinitions><RowDefinition Height="25"/><RowDefinition/><RowDefinition Height="21"/></Grid.RowDefinitions>
+                                <Grid><Border Width="23" Height="23" CornerRadius="12" Background="#E8F2FF" HorizontalAlignment="Left"><TextBlock Text="01" Foreground="{StaticResource Blue}" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="AUTO Y" Margin="30,3,0,0" FontSize="11" FontWeight="Bold"/></Grid>
+                                <Border Grid.Row="1" CornerRadius="4" ClipToBounds="True" Background="White" Margin="0,3"><Image x:Name="case_thumb_image" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/></Border>
+                                <TextBlock Grid.Row="2" Text="Break main + Y" Foreground="{StaticResource Soft}" FontSize="10" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="case02_card" Style="{StaticResource CaseCard}">
+                            <Grid><Grid.RowDefinitions><RowDefinition Height="25"/><RowDefinition/><RowDefinition Height="21"/></Grid.RowDefinitions>
+                                <Grid><Border Width="23" Height="23" CornerRadius="12" Background="#EEF2F6" HorizontalAlignment="Left"><TextBlock Text="02" Foreground="#52606D" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="45° TO Y" Margin="30,3,0,0" FontSize="11" FontWeight="Bold"/></Grid>
+                                <Border Grid.Row="1" CornerRadius="4" ClipToBounds="True" Background="White" Margin="0,3"><Image x:Name="case02_thumb_image" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/></Border>
+                                <TextBlock Grid.Row="2" Text="Elbow near main" Foreground="{StaticResource Soft}" FontSize="10" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="case03_card" Style="{StaticResource CaseCard}">
+                            <Grid><Grid.RowDefinitions><RowDefinition Height="25"/><RowDefinition/><RowDefinition Height="21"/></Grid.RowDefinitions>
+                                <Grid><Border Width="23" Height="23" CornerRadius="12" Background="#EEF2F6" HorizontalAlignment="Left"><TextBlock Text="03" Foreground="#52606D" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="ABOVE MAIN" Margin="30,3,0,0" FontSize="11" FontWeight="Bold"/></Grid>
+                                <Border Grid.Row="1" CornerRadius="4" ClipToBounds="True" Background="White" Margin="0,3"><Image x:Name="case03_thumb_image" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/></Border>
+                                <TextBlock Grid.Row="2" Text="Vertical plane" Foreground="{StaticResource Soft}" FontSize="10" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="case04_card" Style="{StaticResource CaseCard}">
+                            <Grid><Grid.RowDefinitions><RowDefinition Height="25"/><RowDefinition/><RowDefinition Height="21"/></Grid.RowDefinitions>
+                                <Grid><Border Width="23" Height="23" CornerRadius="12" Background="#EEF2F6" HorizontalAlignment="Left"><TextBlock Text="04" Foreground="#52606D" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="OPEN END" Margin="30,3,0,0" FontSize="11" FontWeight="Bold"/></Grid>
+                                <Border Grid.Row="1" CornerRadius="4" ClipToBounds="True" Background="White" Margin="0,3"><Image x:Name="case04_thumb_image" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/></Border>
+                                <TextBlock Grid.Row="2" Text="Two 45° turns" Foreground="{StaticResource Soft}" FontSize="10" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="case05_card" Style="{StaticResource CaseCard}">
+                            <Grid><Grid.RowDefinitions><RowDefinition Height="25"/><RowDefinition/><RowDefinition Height="21"/></Grid.RowDefinitions>
+                                <Grid><Border Width="23" Height="23" CornerRadius="12" Background="#EEF2F6" HorizontalAlignment="Left"><TextBlock Text="05" Foreground="#52606D" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="END ELBOW" Margin="30,3,0,0" FontSize="11" FontWeight="Bold"/></Grid>
+                                <Border Grid.Row="1" CornerRadius="4" ClipToBounds="True" Background="White" Margin="0,3"><Image x:Name="case05_thumb_image" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/></Border>
+                                <TextBlock Grid.Row="2" Text="No Y fitting" Foreground="{StaticResource Soft}" FontSize="10" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="case06_card" Style="{StaticResource CaseCard}">
+                            <Grid><Grid.RowDefinitions><RowDefinition Height="25"/><RowDefinition/><RowDefinition Height="21"/></Grid.RowDefinitions>
+                                <Grid><Border Width="23" Height="23" CornerRadius="12" Background="#EEF2F6" HorizontalAlignment="Left"><TextBlock Text="06" Foreground="#52606D" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="PARALLEL Y" Margin="30,3,0,0" FontSize="11" FontWeight="Bold"/></Grid>
+                                <Border Grid.Row="1" CornerRadius="4" ClipToBounds="True" Background="White" Margin="0,3"><Image x:Name="case06_thumb_image" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/></Border>
+                                <TextBlock Grid.Row="2" Text="Parallel + 45° + Y" Foreground="{StaticResource Soft}" FontSize="10" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                    </UniformGrid>
+                </Grid>
             </Border>
 
-            <Grid Grid.Column="1" Margin="14" Visibility="Collapsed">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="285"/>
-                </Grid.RowDefinitions>
-                <Border Background="White" BorderBrush="{StaticResource Border}" BorderThickness="1"
-                        CornerRadius="7" Margin="0,0,0,12">
-                    <Grid>
-                        <Grid.RowDefinitions><RowDefinition Height="48"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                        <Grid Margin="14,0">
-                            <TextBlock x:Name="preview_title_text" Text="CASE 01 PREVIEW" FontWeight="Bold" VerticalAlignment="Center"/>
-                            <Border HorizontalAlignment="Right" VerticalAlignment="Center"
-                                    Background="#E8F2FF" CornerRadius="4" Padding="10,5">
-                                <TextBlock Text="AUTO SIDE" Foreground="{StaticResource Blue}" FontWeight="Bold"/>
-                            </Border>
+            <Border Grid.Column="1" Background="White">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="14">
+                        <TextBlock x:Name="settings_title_text" Text="CASE 01" FontWeight="Bold" FontSize="15" Margin="0,0,0,9"/>
+                        <Button x:Name="pick_route_btn" Content="PICK DEVICE + MAIN PIPE" Style="{StaticResource Primary}" Height="38" Margin="0,0,0,6"/>
+                        <TextBlock x:Name="pick_help_text" Text="Pick device first, then main pipe." Foreground="#315C87" FontSize="11" Margin="2,0,0,9" TextWrapping="Wrap"/>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,5,0"><TextBlock Text="DEVICE" Style="{StaticResource FieldLabel}"/><Border Background="#F7F8FA" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="4" Padding="8,6" MinHeight="47"><TextBlock x:Name="source_text" Text="Not selected" TextWrapping="Wrap" Foreground="{StaticResource Soft}" FontSize="11"/></Border></StackPanel>
+                            <StackPanel Grid.Column="1" Margin="5,0,0,0"><TextBlock Text="MAIN PIPE" Style="{StaticResource FieldLabel}"/><Border Background="#F7F8FA" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="4" Padding="8,6" MinHeight="47"><TextBlock x:Name="target_text" Text="Not selected" TextWrapping="Wrap" Foreground="{StaticResource Soft}" FontSize="11"/></Border></StackPanel>
                         </Grid>
-                        <Grid Grid.Row="1" Background="#999E7D">
-                            <Image x:Name="plan_image" Stretch="UniformToFill"/>
-                            <Viewbox x:Name="case02_plan_view" Visibility="Collapsed" Stretch="Uniform" Margin="20">
-                                <Canvas Width="800" Height="430" Background="#999E7D">
-                                    <Line X1="180" Y1="40" X2="180" Y2="390" Stroke="#303338" StrokeThickness="30" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                    <Polyline Points="180,265 270,175 650,175" Stroke="#303338" StrokeThickness="24" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                    <Ellipse Canvas.Left="625" Canvas.Top="140" Width="70" Height="70" Fill="#555B61" Stroke="#25282B" StrokeThickness="6"/>
-                                    <Line X1="180" Y1="265" X2="270" Y2="175" Stroke="#F3F5F6" StrokeThickness="5"/>
-                                    <TextBlock Canvas.Left="205" Canvas.Top="275" Text="Y 45°" Foreground="White" FontWeight="Bold" FontSize="18"/>
-                                    <TextBlock Canvas.Left="286" Canvas.Top="132" Text="45° ELBOW" Foreground="White" FontWeight="Bold" FontSize="18"/>
-                                    <TextBlock Canvas.Left="420" Canvas.Top="195" Text="STRAIGHT SLOPED BRANCH" Foreground="White" FontWeight="Bold" FontSize="18"/>
-                                </Canvas>
-                            </Viewbox>
-                            <Viewbox x:Name="case03_plan_view" Visibility="Collapsed" Stretch="Uniform" Margin="20">
-                                <Canvas Width="800" Height="430" Background="#999E7D">
-                                    <Line X1="80" Y1="330" X2="720" Y2="330" Stroke="#303338" StrokeThickness="30" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                    <Polyline Points="330,65 330,185 470,330" Stroke="#303338" StrokeThickness="24" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                    <Ellipse Canvas.Left="285" Canvas.Top="28" Width="90" Height="55" Fill="#555B61" Stroke="#25282B" StrokeThickness="6"/>
-                                    <Line X1="330" Y1="185" X2="470" Y2="330" Stroke="#F3F5F6" StrokeThickness="5"/>
-                                    <TextBlock Canvas.Left="350" Canvas.Top="205" Text="45° DIAGONAL" Foreground="White" FontWeight="Bold" FontSize="18"/>
-                                    <TextBlock Canvas.Left="492" Canvas.Top="285" Text="Y 45°" Foreground="White" FontWeight="Bold" FontSize="18"/>
-                                    <TextBlock Canvas.Left="205" Canvas.Top="105" Text="STANDING PIPE" Foreground="White" FontWeight="Bold" FontSize="18"/>
-                                </Canvas>
-                            </Viewbox>
-                            <Viewbox x:Name="case04_plan_view" Visibility="Collapsed" Stretch="Uniform" Margin="20">
-                                <Canvas Width="800" Height="430" Background="#999E7D">
-                                    <Polyline Points="180,390 180,260 280,160 650,160" Stroke="#303338" StrokeThickness="28" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                    <Ellipse Canvas.Left="625" Canvas.Top="125" Width="70" Height="70" Fill="#555B61" Stroke="#25282B" StrokeThickness="6"/>
-                                    <Line X1="180" Y1="260" X2="280" Y2="160" Stroke="#F3F5F6" StrokeThickness="5"/>
-                                    <TextBlock Canvas.Left="112" Canvas.Top="290" Text="OPEN MAIN END" Foreground="White" FontWeight="Bold" FontSize="18"/>
-                                    <TextBlock Canvas.Left="205" Canvas.Top="205" Text="2 × 45°" Foreground="White" FontWeight="Bold" FontSize="18"/>
-                                    <TextBlock Canvas.Left="410" Canvas.Top="180" Text="SLOPED BRANCH" Foreground="White" FontWeight="Bold" FontSize="18"/>
-                                </Canvas>
-                            </Viewbox>
-                            <Viewbox x:Name="case05_plan_view" Visibility="Collapsed" Stretch="Uniform" Margin="20">
-                                <Canvas Width="800" Height="430" Background="#999E7D">
-                                    <Line X1="560" Y1="35" X2="560" Y2="395" Stroke="#303338" StrokeThickness="30" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                    <Polyline Points="250,70 250,200 560,280" Stroke="#303338" StrokeThickness="24" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                    <Ellipse Canvas.Left="205" Canvas.Top="30" Width="90" Height="55" Fill="#555B61" Stroke="#25282B" StrokeThickness="6"/>
-                                    <Ellipse Canvas.Left="233" Canvas.Top="183" Width="34" Height="34" Fill="#F3F5F6" Stroke="#303338" StrokeThickness="5"/>
-                                    <Line X1="560" Y1="280" X2="250" Y2="200" Stroke="#F3F5F6" StrokeThickness="5"/>
-                                    <TextBlock Canvas.Left="565" Canvas.Top="250" Text="REDUCING Y" Foreground="White" FontWeight="Bold" FontSize="18"/>
-                                    <TextBlock Canvas.Left="300" Canvas.Top="25" Text="A • PARALLEL TO MAIN • USER SLOPE" Foreground="White" FontWeight="Bold" FontSize="17"/>
-                                    <TextBlock Canvas.Left="435" Canvas.Top="125" Text="B • DIRECTION / SLOPE FROM Y ROLL" Foreground="White" FontWeight="Bold" FontSize="15"/>
-                                </Canvas>
-                            </Viewbox>
-                            <Viewbox x:Name="case06_plan_view" Visibility="Collapsed" Stretch="Uniform" Margin="20">
-                                <Canvas Width="800" Height="430" Background="#999E7D">
-                                    <Line X1="560" Y1="35" X2="560" Y2="395" Stroke="#303338" StrokeThickness="30" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                    <Polyline Points="560,260 425,155 170,155" Stroke="#303338" StrokeThickness="24" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                    <Ellipse Canvas.Left="125" Canvas.Top="120" Width="70" Height="70" Fill="#555B61" Stroke="#25282B" StrokeThickness="6"/>
-                                    <Line X1="560" Y1="260" X2="425" Y2="155" Stroke="#F3F5F6" StrokeThickness="5"/>
-                                    <TextBlock Canvas.Left="565" Canvas.Top="235" Text="ENDPOINT ELBOW 45°" Foreground="White" FontWeight="Bold" FontSize="18"/>
-                                    <TextBlock Canvas.Left="255" Canvas.Top="112" Text="CASE 01 GRAVITY BRANCH" Foreground="White" FontWeight="Bold" FontSize="18"/>
-                                </Canvas>
-                            </Viewbox>
-                            <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14" Padding="10,7"
-                                    Background="#EFFFFFFF" CornerRadius="5" BorderBrush="{StaticResource Border}" BorderThickness="1">
-                                <TextBlock x:Name="plan_summary_text" Text="Pick a drain and a horizontal main."/>
-                            </Border>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,5,0">
+                                <TextBlock x:Name="slope_label" Text="Branch Slope (%)" Style="{StaticResource FieldLabel}"/><TextBox x:Name="slope_tb" Text="2.0"/>
+                                <TextBlock x:Name="y_roll_label" Text="Y Up-Roll (°)" Style="{StaticResource FieldLabel}" Margin="0,7,0,3" Visibility="Collapsed"/>
+                                <TextBox x:Name="y_roll_tb" Text="0.0" IsEnabled="False" Visibility="Collapsed"/>
+                                <TextBlock x:Name="y_roll_status_text" Text="Enter Y up-roll." FontSize="10" Foreground="{StaticResource Soft}" TextWrapping="Wrap" Margin="0,2,0,0" Visibility="Collapsed"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                                <TextBlock x:Name="pipe_type_label" Text="Branch Pipe Type" Style="{StaticResource FieldLabel}"/><ComboBox x:Name="pipe_type_combo"/>
+                                <TextBlock x:Name="case04_middle_length_label" Text="Middle pipe between 45° elbows (mm)" Style="{StaticResource FieldLabel}" Margin="0,7,0,3" Visibility="Collapsed"/>
+                                <TextBox x:Name="case04_middle_length_tb" Text="200" Visibility="Collapsed" IsEnabled="False"/>
+                                <TextBlock x:Name="case04_middle_length_status_text" Text="Clear pipe length." FontSize="10" Foreground="{StaticResource Soft}" TextWrapping="Wrap" Margin="0,2,0,0" Visibility="Collapsed"/>
+                            </StackPanel>
                         </Grid>
-                    </Grid>
-                </Border>
-                <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7">
-                    <Grid>
-                        <Grid.RowDefinitions><RowDefinition Height="42"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                        <Grid Margin="14,0">
-                            <TextBlock Text="REALISTIC FITTING DETAIL" FontWeight="Bold" VerticalAlignment="Center"/>
-                            <TextBlock Text="2 × 45° back-to-back • Auto-oriented junction" HorizontalAlignment="Right"
-                                       Foreground="{StaticResource Soft}" VerticalAlignment="Center"/>
-                        </Grid>
-                        <Border Grid.Row="1" Background="#999E7D" ClipToBounds="True">
-                            <Image x:Name="detail_image" Stretch="UniformToFill"/>
+                        <Border BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="0,9,0,0">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,5"><TextBlock x:Name="stage2_label_text" Text="Y FITTING" FontWeight="SemiBold"/><TextBlock x:Name="stage2_mode_text" Text="AUTO" HorizontalAlignment="Right" Foreground="{StaticResource Blue}" FontSize="11" FontWeight="SemiBold"/></Grid>
+                                <ComboBox x:Name="junction_type_combo" Margin="0,0,0,3"/>
+                                <TextBlock x:Name="junction_catalog_text" Text="Scanning Y types..." FontSize="10" Foreground="{StaticResource Soft}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" Margin="0,0,0,7"/>
+                                <Grid><TextBlock x:Name="elbow_label_text" Text="45° Elbows" Style="{StaticResource FieldLabel}"/><TextBlock x:Name="elbow_status_text" Text="Select a Pipe Type" HorizontalAlignment="Right" Foreground="{StaticResource Soft}" FontSize="11"/></Grid>
+                            </StackPanel>
                         </Border>
-                    </Grid>
-                </Border>
-            </Grid>
-
-            <Border Grid.Column="1" Background="White" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="16">
-                        <TextBlock x:Name="settings_title_text" Text="CASE 01 SETTINGS" FontWeight="Bold" FontSize="16" Margin="0,0,0,14"/>
-                        <Button x:Name="pick_route_btn" Content="PICK DEVICE, THEN MAIN PIPE"
-                                Style="{StaticResource Primary}" HorizontalAlignment="Stretch" Margin="0,0,0,12"/>
-                        <Border Background="#EEF5FD" BorderBrush="#C7DDF4" BorderThickness="1"
-                                CornerRadius="5" Padding="10" Margin="0,0,0,12">
-                            <TextBlock x:Name="pick_help_text" Text="One command: pick the device first, then click the exact connection point on the horizontal/sloped main pipe."
-                                       TextWrapping="Wrap" Foreground="#315C87"/>
+                        <TextBlock x:Name="case_help_text" Text="" Visibility="Collapsed"/>
+                        <Border Background="#F7F9FB" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="5" Padding="9" Margin="0,7,0,0">
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                <StackPanel><TextBlock x:Name="validation_source_text" Text="○ Source" Style="{StaticResource Validation}"/><TextBlock x:Name="validation_target_text" Text="○ Main" Style="{StaticResource Validation}"/><TextBlock x:Name="validation_elbow_text" Text="○ Elbows" Style="{StaticResource Validation}"/></StackPanel>
+                                <StackPanel Grid.Column="1"><TextBlock x:Name="validation_junction_text" Text="○ Y fitting" Style="{StaticResource Validation}"/><TextBlock x:Name="validation_slope_text" Text="○ Slope" Style="{StaticResource Validation}"/><TextBlock x:Name="validation_flow_text" Text="○ Geometry" Style="{StaticResource Validation}"/></StackPanel>
+                            </Grid>
                         </Border>
-                        <TextBlock Text="1. Device" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                        <Border Background="#F7F8F9" BorderBrush="{StaticResource Border}" BorderThickness="1"
-                                CornerRadius="4" Padding="9,7" Margin="0,0,0,10">
-                            <TextBlock x:Name="source_text" Text="Not selected" TextWrapping="Wrap" Foreground="{StaticResource Soft}"/>
-                        </Border>
-                        <TextBlock Text="2. Main Pipe" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                        <Border Background="#F7F8F9" BorderBrush="{StaticResource Border}" BorderThickness="1"
-                                CornerRadius="4" Padding="9,7" Margin="0,0,0,12">
-                            <TextBlock x:Name="target_text" Text="Not selected" TextWrapping="Wrap" Foreground="{StaticResource Soft}"/>
-                        </Border>
-                        <Separator Margin="0,0,0,12"/>
-                        <TextBlock x:Name="slope_label" Text="Branch Slope (%)" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                        <TextBox x:Name="slope_tb" Text="2.0" Margin="0,0,0,12"/>
-                        <TextBlock x:Name="y_roll_label" Text="Y roll deferred" FontWeight="SemiBold" Margin="0,0,0,4" Foreground="#7A858F" Visibility="Collapsed"/>
-                        <TextBox x:Name="y_roll_tb" Text="0.0" Margin="0,0,0,12" IsEnabled="False" Visibility="Collapsed"/>
-                        <TextBlock x:Name="pipe_type_label" Text="Branch Pipe Type" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                        <ComboBox x:Name="pipe_type_combo" Margin="0,0,0,12"/>
-                        <Grid Margin="0,0,0,9">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition/></Grid.ColumnDefinitions>
-                            <TextBlock x:Name="stage2_label_text" Text="Stage 2 — Routed Y Fitting" FontWeight="SemiBold"/>
-                            <TextBlock Grid.Column="1" x:Name="stage2_mode_text" Text="AUTO — routing preference fit" Foreground="#1473E6" FontWeight="SemiBold"/>
-                        </Grid>
-                        <Grid Margin="0,0,0,9">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition/></Grid.ColumnDefinitions>
-                            <TextBlock x:Name="elbow_label_text" Text="45° Elbows" FontWeight="SemiBold"/>
-                            <TextBlock Grid.Column="1" x:Name="elbow_status_text" Text="Select a Pipe Type" TextWrapping="Wrap" Foreground="{StaticResource Soft}"/>
-                        </Grid>
-                        <Border Background="#EEF5FD" BorderBrush="#C7DDF4" BorderThickness="1" CornerRadius="5" Padding="10" Margin="0,3,0,14">
-                            <TextBlock x:Name="case_help_text" Text="After Stage 1 is committed, the tool breaks the main exactly at the branch endpoint and asks Revit to insert the Y from the selected main Pipe Type Junction routing preference."
-                                       TextWrapping="Wrap" Foreground="#315C87"/>
-                        </Border>
-                        <TextBlock Text="VALIDATION" FontWeight="Bold" Margin="0,0,0,8"/>
-                        <TextBlock x:Name="validation_source_text" Text="○ Source not selected" Margin="0,0,0,5"/>
-                        <TextBlock x:Name="validation_target_text" Text="○ Target not selected" Margin="0,0,0,5"/>
-                        <TextBlock x:Name="validation_elbow_text" Text="○ Elbow rules not checked" Margin="0,0,0,5"/>
-                        <TextBlock x:Name="validation_junction_text" Text="○ Junction rules not checked" Margin="0,0,0,5"/>
-                        <TextBlock x:Name="validation_slope_text" Text="○ Slope not validated" Margin="0,0,0,5"/>
-                        <TextBlock x:Name="validation_flow_text" Text="○ Flow direction not validated"/>
-                        <Border Background="#F8F9FA" BorderBrush="{StaticResource Border}" BorderThickness="1"
-                                CornerRadius="5" Padding="10" Margin="0,14,0,0">
-                            <TextBlock x:Name="status_text" Text="Ready." TextWrapping="Wrap" Foreground="{StaticResource Soft}"/>
-                        </Border>
+                        <Border Background="#FFF8F3" BorderBrush="#E8D8CA" BorderThickness="1" CornerRadius="5" Padding="9" Margin="0,7,0,0"><TextBlock x:Name="status_text" Text="Ready." TextWrapping="Wrap" Foreground="{StaticResource Soft}" FontSize="11"/></Border>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
         </Grid>
 
         <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
-            <Grid Margin="16,10">
-                <TextBlock Text="Case 01–06 are configured."
-                           Foreground="{StaticResource Soft}" VerticalAlignment="Center"/>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="preview_btn" Content="VALIDATE &amp; FOCUS" MinWidth="162" Margin="0,0,8,0"/>
-                    <Button x:Name="create_btn" Content="CREATE CASE 01 CONNECTION"
-                            Style="{StaticResource Primary}" MinWidth="224"/>
-                </StackPanel>
-            </Grid>
+            <Grid Margin="12,9"><Button x:Name="preview_btn" Content="VALIDATE" Width="120" HorizontalAlignment="Right" Margin="0,0,178,0"/><Button x:Name="create_btn" Content="CREATE CASE 01" Style="{StaticResource Primary}" Width="168" HorizontalAlignment="Right"/></Grid>
         </Border>
+
+        <!-- Controller compatibility: visual previews now live in the six case cards. -->
+        <Grid Visibility="Collapsed">
+            <TextBlock x:Name="preview_title_text"/><Image x:Name="plan_image"/><Image x:Name="detail_image"/><TextBlock x:Name="plan_summary_text"/>
+            <Viewbox x:Name="case02_plan_view"/><Viewbox x:Name="case03_plan_view"/><Viewbox x:Name="case04_plan_view"/><Viewbox x:Name="case05_plan_view"/><Viewbox x:Name="case06_plan_view"/>
+        </Grid>
     </Grid>
 </Window>

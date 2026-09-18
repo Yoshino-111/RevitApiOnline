@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>ExteriorWallMapper.Loader</AssemblyName>
+    <RootNamespace>ExteriorWallMapper.Loader</RootNamespace>
+    <Revit2025Dir>C:\Program Files\Autodesk\Revit 2025</Revit2025Dir>
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="RevitAPI">
+      <HintPath>$(Revit2025Dir)\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(Revit2025Dir)\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <ProjectReference Include="..\RevitHotReload.Abstractions\RevitHotReload.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\RevitHotLoader2025\HotReloadLog.cs" Link="Infrastructure\HotReloadLog.cs" />
+    <Compile Include="..\RevitHotLoader2025\HotReloadManager.cs" Link="Infrastructure\HotReloadManager.cs" />
+    <Compile Include="..\RevitHotLoader2025\HotReloadSettings.cs" Link="Infrastructure\HotReloadSettings.cs" />
+    <Compile Include="..\RevitHotLoader2025\PluginLoadContext.cs" Link="Infrastructure\PluginLoadContext.cs" />
+  </ItemGroup>
+</Project>

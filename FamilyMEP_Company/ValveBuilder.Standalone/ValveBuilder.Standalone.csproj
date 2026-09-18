@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RevitVersion Condition="'$(RevitVersion)' == ''">2025</RevitVersion>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>FamilyMEP.ValveBuilder.Plugin</AssemblyName>
+    <RootNamespace>FamilyMEP.Plugin</RootNamespace>
+    <DefineConstants>$(DefineConstants);REVIT$(RevitVersion)</DefineConstants>
+    <RevitApiPath>C:\Program Files\Autodesk\Revit $(RevitVersion)\RevitAPI.dll</RevitApiPath>
+    <RevitApiUiPath>C:\Program Files\Autodesk\Revit $(RevitVersion)\RevitAPIUI.dll</RevitApiUiPath>
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitApiPath)</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitApiUiPath)</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <ProjectReference Include="..\RevitHotReload.Abstractions\RevitHotReload.Abstractions.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Data\catalogs\BallValve\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

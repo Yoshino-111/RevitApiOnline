@@ -1,0 +1,9 @@
+Copy the six original Revit screenshots into this folder with these names:
+01-case01.png
+02-case02.png
+03-case03.png
+04-case04.png
+05-case05.png
+06-case06.png
+
+Only empty margins will be cropped. The source geometry will not be redrawn.

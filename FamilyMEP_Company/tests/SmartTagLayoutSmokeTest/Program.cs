@@ -987,7 +987,7 @@ var ductDensityCandidates = Enumerable.Range(0, 24)
         NearestCompanionKey: 7000 + index % 3,
         CompanionDistance: index * 0.1))
     .ToList();
-IReadOnlySet<long> densitySelection = SmartTagDuctDensity.Select(
+ISet<long> densitySelection = SmartTagDuctDensity.Select(
     ductDensityCandidates,
     new LayoutRect(0.0, 0.0, 10.0, 10.0));
 Require(densitySelection.Count == 20 &&
@@ -995,7 +995,7 @@ Require(densitySelection.Count == 20 &&
         densitySelection.Count(key => key < 6012) == 10 &&
         densitySelection.Count(key => key >= 6012) == 10,
     "The sample grid must retain at most ten eligible Duct tags independently in every repeated area, with existing tags consuming capacity first.");
-IReadOnlySet<long> longestDensitySelection = SmartTagDuctDensity.Select(
+ISet<long> longestDensitySelection = SmartTagDuctDensity.Select(
     [
         new DuctDensityCandidate(6100, new LayoutPoint(1.0, 1.0), false, 7100, 0.1)
             { HostSpan = 1.0 },

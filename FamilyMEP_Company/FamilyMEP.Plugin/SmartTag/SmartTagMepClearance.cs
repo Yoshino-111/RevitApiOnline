@@ -25,7 +25,7 @@ internal static class SmartTagMepClearance
         double maximumTravel = Math.Max(
             maximumWidth * 3.0,
             Math.Min(columnWidth * 0.55, maximumWidth * 8.0));
-        int maximumLevel = Math.Clamp(
+        int maximumLevel = PortableMath.Clamp(
             (int)Math.Ceiling(maximumTravel / Math.Max(step, 1e-8)),
             1,
             24);

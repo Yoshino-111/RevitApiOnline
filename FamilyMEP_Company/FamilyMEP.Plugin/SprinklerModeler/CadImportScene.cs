@@ -108,7 +108,7 @@ internal sealed class CadImportAnalysis
                 if (red < 42 && green < 42 && blue < 42)
                     red = green = blue = 205;
                 var pen = new Pen(new SolidColorBrush(System.Windows.Media.Color.FromRgb(red, green, blue)), 1.15);
-                pen.Thickness = Math.Clamp(nativeSegments[index].LineWeight / 18.0, 0.70, 3.50);
+                pen.Thickness = PortableMath.Clamp(nativeSegments[index].LineWeight / 18.0, 0.70, 3.50);
                 pen.Freeze();
                 drawing.DrawLine(
                     pen,
