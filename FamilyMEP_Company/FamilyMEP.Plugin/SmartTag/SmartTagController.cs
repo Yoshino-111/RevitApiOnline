@@ -340,8 +340,12 @@ internal sealed class SmartTagController : IDisposable
                     return;
                 }
 
+                string firstDiagnostic = result.Created == 0
+                    ? result.Messages.FirstOrDefault() ?? "No usable dimension references were found."
+                    : string.Empty;
                 Status.Text =
                     $"Smart Dim wrote {result.Created} real dimension(s). " +
+                    (result.Created == 0 ? $"Reason: {firstDiagnostic} " : string.Empty) +
                     (result.Grouped > 0
                         ? $"Grouped {result.Grouped} duct segment(s) into edge chains. "
                         : string.Empty) +
@@ -612,17 +616,9 @@ internal sealed class SmartTagController : IDisposable
                 : "First pick the reference tag; then drag across target tag text/leader lines...",
             () =>
             {
-                if (keepCompactMode)
-                {
-                    SyncQuickAlignVisibility();
-                }
-                else
-                {
-                    if (!_window.IsVisible) _window.Show();
-                    _window.Activate();
-                }
                 if (result is null)
                 {
+                    RestoreAfterQuickAction(keepCompactMode);
                     Status.Text = arrangeStack
                         ? "Tag stacking cancelled; Revit was not changed."
                         : "Tag edge alignment cancelled; Revit was not changed.";
@@ -651,6 +647,7 @@ internal sealed class SmartTagController : IDisposable
                     ? null
                     : string.Join(Environment.NewLine, result.Warnings);
                 Status.Foreground = result.Aligned > 0 ? Brush("#7FC5FF") : Brush("#FF8A80");
+                EnterCompactModeAfterQuickAction();
             });
     }
 
@@ -684,9 +681,9 @@ internal sealed class SmartTagController : IDisposable
             "Step 1: drag reference tags. Step 2: drag target tags...",
             () =>
             {
-                RestoreAfterQuickAction(keepCompactMode);
                 if (result is null)
                 {
+                    RestoreAfterQuickAction(keepCompactMode);
                     Status.Text = "Horizontal tag-row alignment cancelled; Revit was not changed.";
                     Status.Foreground = Brush("#A8B2BC");
                     return;
@@ -697,6 +694,7 @@ internal sealed class SmartTagController : IDisposable
                     $"Aligned {result.Aligned} target tag row(s); {result.Skipped} skipped. " +
                     $"Extra targets were arranged {(placeExtrasAbove ? "above" : "below")} " +
                     "with optimized non-crossing leader order.");
+                EnterCompactModeAfterQuickAction();
             });
     }
 
@@ -722,9 +720,9 @@ internal sealed class SmartTagController : IDisposable
             "Step 1: scan the messy tags. Steps 2-3: click the divider endpoints...",
             () =>
             {
-                RestoreAfterQuickAction(keepCompactMode);
                 if (result is null)
                 {
+                    RestoreAfterQuickAction(keepCompactMode);
                     Status.Text = "Left/right split cancelled; Revit was not changed.";
                     Status.Foreground = Brush("#A8B2BC");
                     return;
@@ -734,6 +732,7 @@ internal sealed class SmartTagController : IDisposable
                     "ACTUAL REVIT TAGS - gathered beside each local host",
                     $"Gathered {result.Aligned} tag(s) horizontally; {result.Skipped} skipped. " +
                     "Each tag stayed near its own left/right host; original rows/order were preserved.");
+                EnterCompactModeAfterQuickAction();
             });
     }
 
@@ -748,6 +747,30 @@ internal sealed class SmartTagController : IDisposable
             if (!_window.IsVisible) _window.Show();
             _window.Activate();
         }
+    }
+
+    private void EnterCompactModeAfterQuickAction()
+    {
+        if (_disposed || !_quickAlignReady) return;
+
+        _smartTagCompactMode = true;
+        _handlingSmartTagStateChange = true;
+        try
+        {
+            _window.WindowState = WindowState.Normal;
+            if (_window.IsVisible) _window.Hide();
+        }
+        finally
+        {
+            _handlingSmartTagStateChange = false;
+        }
+
+        SyncQuickAlignVisibility();
+        if (!_quickAlignWindow.IsVisible) _quickAlignWindow.Show();
+        _quickAlignWindow.Topmost = true;
+        NativeWindow.TryShowNoActivate(
+            new WindowInteropHelper(_quickAlignWindow).Handle);
+        NativeWindow.TryActivate(_uiApplication.MainWindowHandle);
     }
 
     private void ShowManualQuickResult(
@@ -808,15 +831,23 @@ internal sealed class SmartTagController : IDisposable
 
         ComboBoxItem? selectedSide = FindQuick<WpfComboBox>(
             "quick_auto_side_combo").SelectedItem as ComboBoxItem;
-        bool placeAbove = string.Equals(
-            selectedSide?.Tag?.ToString(),
-            "Above",
+        string sideMode = selectedSide?.Tag?.ToString() ?? "Below";
+        bool placeAbove =
+            string.Equals(sideMode, "Above", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(sideMode, "BothAbove", StringComparison.OrdinalIgnoreCase);
+        bool analyzeBothLeaderSides = sideMode.StartsWith(
+            "Both",
             StringComparison.OrdinalIgnoreCase);
+        string sideDescription = analyzeBothLeaderSides
+            ? placeAbove
+                ? "above (leaders analyzed on both sides)"
+                : "below (leaders analyzed on both sides)"
+            : placeAbove ? "above" : "below";
         double rowGapPaperMillimeters = ReadManualTagGapPaperMillimeters();
         SmartTagManualAlignResult? result = null;
         WriteButton.IsEnabled = false;
         Status.Text =
-            $"Pick one fixed sample tag, then drag across target text/leader lines. Targets will be stacked {(placeAbove ? "above" : "below")} it.";
+            $"Pick one fixed sample tag, then drag across target text/leader lines. Targets will be stacked {sideDescription} it.";
         Status.Foreground = Brush("#A8B2BC");
         bool keepCompactMode = _smartTagCompactMode;
         _window.Hide();
@@ -827,21 +858,14 @@ internal sealed class SmartTagController : IDisposable
             app => result = SmartTagRevitService.PickAndArrangeTagsAroundReference(
                 app,
                 rowGapPaperMillimeters,
-                placeAbove),
+                placeAbove,
+                analyzeBothLeaderSides),
             "Pick the sample tag, then drag across target tag text/leader lines...",
             () =>
             {
-                if (keepCompactMode)
-                {
-                    SyncQuickAlignVisibility();
-                }
-                else
-                {
-                    if (!_window.IsVisible) _window.Show();
-                    _window.Activate();
-                }
                 if (result is null)
                 {
+                    RestoreAfterQuickAction(keepCompactMode);
                     Status.Text = "Auto Column cancelled; Revit was not changed.";
                     Status.Foreground = Brush("#A8B2BC");
                     return;
@@ -854,14 +878,15 @@ internal sealed class SmartTagController : IDisposable
                 Overlay.Children.Clear();
                 PreviewImage.Source = LoadBitmap(result.ImageBytes);
                 PreviewMode.Text =
-                    $"ACTUAL REVIT TAGS - auto column {(placeAbove ? "above" : "below")} fixed reference using real text widths";
+                    $"ACTUAL REVIT TAGS - auto column {sideDescription} fixed reference using real text widths";
                 Status.Text =
-                    $"Auto Column arranged {result.Aligned} target tag(s) {(placeAbove ? "above" : "below")} the fixed sample; " +
+                    $"Auto Column arranged {result.Aligned} target tag(s) {sideDescription} the fixed sample; " +
                     $"{result.Skipped} skipped. Crossing-aware orthogonal leaders were applied.";
                 Status.ToolTip = result.Warnings.Count == 0
                     ? null
                     : string.Join(Environment.NewLine, result.Warnings);
                 Status.Foreground = result.Aligned > 0 ? Brush("#7FC5FF") : Brush("#FF8A80");
+                EnterCompactModeAfterQuickAction();
             });
     }
 

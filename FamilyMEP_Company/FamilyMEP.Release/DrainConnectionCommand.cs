@@ -12,6 +12,7 @@ public sealed class DrainConnectionCommand : IExternalCommand
     {
         try
         {
+            Application.ShuffleDrainConnectionIcon();
 #if REVIT2020
             return LegacyDrainHotReloadManager.ReloadAndExecute(
                 commandData,

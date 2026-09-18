@@ -7,6 +7,7 @@ namespace FamilyMEP.Entry;
 public sealed class Application : IExternalApplication
 {
     private DrainConnectionRibbonAnimator? _drainConnectionIconAnimator;
+    private static DrainConnectionRibbonAnimator? _activeDrainConnectionIconAnimator;
     private SprinklerModelerRibbonAnimator? _sprinklerModelerIconAnimator;
 
     internal static FamilyMEP.Plugin.FamilyManagerPlugin Plugin { get; } = new();
@@ -68,6 +69,7 @@ public sealed class Application : IExternalApplication
         _drainConnectionIconAnimator = DrainConnectionRibbonAnimator.TryStart(
             drainButton,
             Assembly.GetExecutingAssembly());
+        _activeDrainConnectionIconAnimator = _drainConnectionIconAnimator;
 
         RibbonPanel fireProtectionPanel = application.GetRibbonPanels(tabName)
             .FirstOrDefault(item => item.Name == "Fire Protection")
@@ -103,9 +105,18 @@ public sealed class Application : IExternalApplication
         return Result.Succeeded;
     }
 
+    internal static void ShuffleDrainConnectionIcon()
+    {
+        _activeDrainConnectionIconAnimator?.ShuffleVariant();
+    }
+
     public Result OnShutdown(UIControlledApplication application)
     {
         _drainConnectionIconAnimator?.Dispose();
+        if (ReferenceEquals(_activeDrainConnectionIconAnimator, _drainConnectionIconAnimator))
+        {
+            _activeDrainConnectionIconAnimator = null;
+        }
         _drainConnectionIconAnimator = null;
         _sprinklerModelerIconAnimator?.Dispose();
         _sprinklerModelerIconAnimator = null;

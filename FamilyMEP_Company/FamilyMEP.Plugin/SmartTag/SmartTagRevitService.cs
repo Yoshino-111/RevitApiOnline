@@ -575,6 +575,7 @@ internal static class SmartTagRevitService
         SmartTagStackRouteInput BuildInput(IndependentTag tag)
         {
             LayoutRect body = actualBounds[tag.Id.CompatValue()];
+            LayoutPoint tagHead = Project(tag.TagHeadPosition, right, up);
             LayoutPoint end = TryGetLeaderOrHostAnchor(
                 tag,
                 document,
@@ -607,8 +608,8 @@ internal static class SmartTagRevitService
             .OrderByDescending(value => value)
             .ToArray();
         double routeClearance = Math.Max(
-            clearance * 0.35,
-            0.10 * Math.Max(1, view.Scale) / 304.8);
+            clearance * 0.75,
+            0.50 * Math.Max(1, view.Scale) / 304.8);
         SmartTagFixedRowRoutePlan plan =
             SmartTagStackRouting.FindBestOrderForFixedRows(
                 movableInputs,
@@ -630,8 +631,7 @@ internal static class SmartTagRevitService
                 up) ?? new LayoutPoint(
                 (body.MinU + body.MaxU) * 0.5,
                 (body.MinV + body.MaxV) * 0.5);
-            double currentRow = SmartTagStackRouting
-                .GetVisibleLeaderAttachmentPoint(body, end).V;
+            double currentRow = Project(tag.TagHeadPosition, right, up).V;
             double shiftV = rows[index] - currentRow;
             if (Math.Abs(shiftV) <= 1e-9) continue;
             try
@@ -1192,14 +1192,13 @@ internal static class SmartTagRevitService
                 up) ?? new LayoutPoint(
                     (tagBounds.MinU + tagBounds.MaxU) * 0.5,
                     (tagBounds.MinV + tagBounds.MaxV) * 0.5);
-            return SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
-                tagBounds,
-                anchor).V;
+            return Project(tag.TagHeadPosition, right, up).V;
         }
 
         SmartTagStackRouteInput BuildRowRouteInput(IndependentTag tag)
         {
             LayoutRect body = bounds[tag.Id.CompatValue()];
+            LayoutPoint tagHead = Project(tag.TagHeadPosition, right, up);
             LayoutPoint anchor = TryGetLeaderOrHostAnchor(
                 tag,
                 document,
@@ -2500,7 +2499,8 @@ internal static class SmartTagRevitService
     public static SmartTagManualAlignResult? PickAndArrangeTagsAroundReference(
         UIApplication application,
         double rowGapPaperMillimeters = 1.0,
-        bool placeAboveReference = false)
+        bool placeAboveReference = false,
+        bool analyzeBothLeaderSides = true)
     {
         UIDocument uidoc = application.ActiveUIDocument
             ?? throw new InvalidOperationException("Open a Revit project first.");
@@ -2645,6 +2645,9 @@ internal static class SmartTagRevitService
                     Tag: tag,
                     Bounds: bounds,
                     RoutingBounds: routingBounds,
+                    Head: SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
+                        bounds,
+                        anchor),
                     Anchor: anchor,
                     LeftEdge: leftEdge);
             })
@@ -2664,9 +2667,7 @@ internal static class SmartTagRevitService
             targets.Select(item => new SmartTagStackRouteInput(
                     item.Tag.Id.CompatValue(),
                     item.RoutingBounds,
-                    SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
-                        item.Bounds,
-                        item.Anchor),
+                    item.Head,
                     item.Anchor))
                 .ToArray(),
             new SmartTagStackRouteInput(
@@ -2728,7 +2729,7 @@ internal static class SmartTagRevitService
                 up,
                 warnings,
                 fixedTag: referenceTag,
-                minimumLaneClearance: Math.Max(rowGap * 0.35, 1e-8));
+                minimumLaneClearance: Math.Max(rowGap * 0.75, 1e-8));
             document.Regenerate();
 
             var arrangedTargets = targets
@@ -2758,7 +2759,7 @@ internal static class SmartTagRevitService
                         up,
                         warnings,
                         fixedTag: referenceTag,
-                        minimumLaneClearance: Math.Max(rowGap * 0.35, 1e-8));
+                        minimumLaneClearance: Math.Max(rowGap * 0.75, 1e-8));
                     document.Regenerate();
                 }
 
@@ -2834,6 +2835,9 @@ internal static class SmartTagRevitService
                             item.Tag,
                             Bounds: currentBounds,
                             RoutingBounds: routingBounds,
+                            Head: SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
+                                currentBounds,
+                                currentEnd),
                             Anchor: currentEnd,
                             LeftEdge: leftEdge);
                     })
@@ -2843,9 +2847,7 @@ internal static class SmartTagRevitService
                     actualTargets.Select(item => new SmartTagStackRouteInput(
                             item.Tag.Id.CompatValue(),
                             item.RoutingBounds,
-                            SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
-                                item.Bounds,
-                                item.Anchor),
+                            item.Head,
                             item.Anchor))
                         .ToArray(),
                     new SmartTagStackRouteInput(
@@ -2853,7 +2855,7 @@ internal static class SmartTagRevitService
                         finalReferenceRoutingBounds,
                         SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
                             finalReferenceBounds,
-                            referenceAnchor),
+                            finalReferenceAnchor),
                         referenceAnchor),
                     finalReferenceRoutingBounds,
                     finalReferenceEdge,
@@ -2863,27 +2865,34 @@ internal static class SmartTagRevitService
                     aboveOnly: placeAboveReference);
 
                 var actualById = actualTargets.ToDictionary(item => item.Tag.Id.CompatValue());
-                double boundary = placeAboveReference
-                    ? finalReferenceBounds.MaxV + rowGap
-                    : finalReferenceBounds.MinV - rowGap;
                 IReadOnlyList<long> acceptedKeys = placeAboveReference
                     ? finalPlan.AboveNearestFirst
                     : finalPlan.BelowNearestFirst;
-                foreach (long key in acceptedKeys)
-                {
-                    var item = actualById[key];
-                    double currentCenterV = (item.Bounds.MinV + item.Bounds.MaxV) * 0.5;
-                    double desiredCenterV = placeAboveReference
-                        ? boundary + item.Bounds.Height * 0.5
-                        : boundary - item.Bounds.Height * 0.5;
-                    item.Tag.TagHeadPosition +=
-                        right * (finalReferenceEdge - item.LeftEdge) +
-                        up * (desiredCenterV - currentCenterV);
-                    boundary = placeAboveReference
-                        ? desiredCenterV + item.Bounds.Height * 0.5 + rowGap
-                        : desiredCenterV - item.Bounds.Height * 0.5 - rowGap;
-                }
+                PlaceAcceptedRows(finalPlan.AboveNearestFirst, placeAbove: true);
+                PlaceAcceptedRows(finalPlan.BelowNearestFirst, placeAbove: false);
                 document.Regenerate();
+
+                void PlaceAcceptedRows(IReadOnlyList<long> keys, bool placeAbove)
+                {
+                    if (placeAbove != placeAboveReference) return;
+                    double boundary = placeAbove
+                        ? finalReferenceBounds.MaxV + rowGap
+                        : finalReferenceBounds.MinV - rowGap;
+                    foreach (long key in keys)
+                    {
+                        var item = actualById[key];
+                        double currentCenterV = (item.Bounds.MinV + item.Bounds.MaxV) * 0.5;
+                        double desiredCenterV = placeAbove
+                            ? boundary + item.Bounds.Height * 0.5
+                            : boundary - item.Bounds.Height * 0.5;
+                        item.Tag.TagHeadPosition +=
+                            right * (finalReferenceEdge - item.LeftEdge) +
+                            up * (desiredCenterV - currentCenterV);
+                        boundary = placeAbove
+                            ? desiredCenterV + item.Bounds.Height * 0.5 + rowGap
+                            : desiredCenterV - item.Bounds.Height * 0.5 - rowGap;
+                    }
+                }
 
                 finalOrderedTags = acceptedKeys
                     .Where(actualById.ContainsKey)
@@ -2930,20 +2939,13 @@ internal static class SmartTagRevitService
                 up,
                 warnings,
                 fixedTag: referenceTag,
-                minimumLaneClearance: Math.Max(rowGap * 0.35, 1e-8));
+                minimumLaneClearance: Math.Max(rowGap * 0.75, 1e-8));
             document.Regenerate();
             // Duct tag families can shift both their visible attachment and
             // the leader's 3-D plane after regeneration. Setting only Elbow
             // leaves a slightly diagonal shoulder/tail. Reassert orientation,
             // End and Elbow together, then verify their projected axes after
             // every regeneration before the AUTO transaction is committed.
-            StabilizeAutoOrthogonalLeaders(
-                document,
-                view,
-                finalOrderedTags,
-                right,
-                up,
-                warnings);
             RouteLeadersPreferStraight(
                 document,
                 view,
@@ -2952,7 +2954,19 @@ internal static class SmartTagRevitService
                 up,
                 warnings,
                 fixedTag: referenceTag,
-                mixedSideEndpointDirection: placeAboveReference ? -1 : 1);
+                mixedSideEndpointDirection: analyzeBothLeaderSides
+                    ? placeAboveReference ? -1 : 1
+                    : 0);
+            document.Regenerate();
+            // Prefer-straight may collapse a Revit elbow. Orthogonal
+            // stabilization must be the final geometry writer before commit.
+            StabilizeAutoOrthogonalLeaders(
+                document,
+                view,
+                finalOrderedTags,
+                right,
+                up,
+                warnings);
             document.Regenerate();
             committedOrderedTags = finalOrderedTags.ToArray();
             transaction.Commit();
@@ -2999,6 +3013,87 @@ internal static class SmartTagRevitService
             }
         }
 
+        // Revit can resolve a free leader endpoint to a slightly different
+        // connector after the first commit. For a one-direction column this can make
+        // the predicted row order stale even though every leader remains
+        // orthogonal. Re-measure the persisted routes, permute the existing
+        // rows around the fixed sample, then rebuild the column and lanes.
+        // The sample never moves and every target remains on the selected side.
+        int finalPredictedCrossings = finalPlan.CrossingCount;
+        if (committedOrderedTags.Length > 1)
+        {
+            // Commit each acceptance pass so the next pass measures Revit's
+            // persisted endpoints rather than the requested in-memory points.
+            // This is required for Duct/Accessory tag families that snap a
+            // free endpoint again during regeneration.
+            for (int routeAcceptance = 0; routeAcceptance < 3; routeAcceptance++)
+            {
+                using var crossingRepair = new Transaction(
+                    document,
+                    "FamilyMEP - Repair Auto Column Leader Crossings");
+                crossingRepair.Start();
+                (committedOrderedTags, finalPredictedCrossings) =
+                    OptimizeAutoColumnActualRowOrder(
+                        document,
+                        view,
+                        referenceTag,
+                        committedOrderedTags,
+                        placeAboveReference,
+                        rowGap,
+                        right,
+                        up,
+                        warnings);
+                NormalizeManualColumnFromRealBounds(
+                    document,
+                    view,
+                    referenceTag,
+                    committedOrderedTags,
+                    alignLeftEdge,
+                    placeAllBelow: !placeAboveReference,
+                    rowGap,
+                    right,
+                    up,
+                    warnings,
+                    placeAllAbove: placeAboveReference,
+                    normalizeAutoBodyBounds: true);
+                document.Regenerate();
+                RouteSeparatedOrthogonalLeaders(
+                    document,
+                    view,
+                    committedOrderedTags,
+                    right,
+                    up,
+                    warnings,
+                    fixedTag: referenceTag,
+                    minimumLaneClearance: Math.Max(rowGap * 0.75, 1e-8));
+                document.Regenerate();
+                RouteLeadersPreferStraight(
+                    document,
+                    view,
+                    committedOrderedTags,
+                    right,
+                    up,
+                    warnings,
+                    fixedTag: referenceTag,
+                    mixedSideEndpointDirection: analyzeBothLeaderSides
+                        ? placeAboveReference ? -1 : 1
+                        : 0);
+                document.Regenerate();
+                StabilizeAutoOrthogonalLeaders(
+                    document,
+                    view,
+                    committedOrderedTags,
+                    right,
+                    up,
+                    warnings);
+                document.Regenerate();
+                crossingRepair.Commit();
+            }
+            warnings.Add(
+                $"AUTO {(placeAboveReference ? "ABOVE" : "BELOW")} persisted row repair: " +
+                $"{finalPredictedCrossings} predicted crossing(s) remain after row optimization.");
+        }
+
         // A Revit commit can perform one more family regeneration after the
         // in-transaction verification. Re-check persisted geometry and repair
         // it in the same assimilated Undo item, otherwise some Duct families
@@ -3025,6 +3120,7 @@ internal static class SmartTagRevitService
             reportAdjustments: false);
         HashSet<long> persistedFailures = GetNonOrthogonalAutoLeaderTagIds(
             committedOrderedTags,
+            view,
             right,
             up,
             persistedTolerance,
@@ -3035,13 +3131,6 @@ internal static class SmartTagRevitService
                 document,
                 "FamilyMEP - Finalize Auto Orthogonal Leaders");
             correction.Start();
-            StabilizeAutoOrthogonalLeaders(
-                document,
-                view,
-                committedOrderedTags,
-                right,
-                up,
-                warnings);
             RouteLeadersPreferStraight(
                 document,
                 view,
@@ -3050,7 +3139,17 @@ internal static class SmartTagRevitService
                 up,
                 warnings,
                 fixedTag: referenceTag,
-                mixedSideEndpointDirection: placeAboveReference ? -1 : 1);
+                mixedSideEndpointDirection: analyzeBothLeaderSides
+                    ? placeAboveReference ? -1 : 1
+                    : 0);
+            document.Regenerate();
+            StabilizeAutoOrthogonalLeaders(
+                document,
+                view,
+                committedOrderedTags,
+                right,
+                up,
+                warnings);
             correction.Commit();
             persistedBodyBounds = MeasureTagTextBounds(
                 document,
@@ -3071,6 +3170,100 @@ internal static class SmartTagRevitService
                 reportAdjustments: false);
             persistedFailures = GetNonOrthogonalAutoLeaderTagIds(
                 committedOrderedTags,
+                view,
+                right,
+                up,
+                persistedTolerance,
+                persistedBodyBounds);
+        }
+
+        // The orthogonal repair above can be the last operation that changes a
+        // Revit-controlled endpoint. Re-run the row permutation once against
+        // that committed geometry, then write the elbow lanes immediately and
+        // leave no later endpoint writer that can recreate a crossing.
+        if (committedOrderedTags.Length > 1)
+        {
+            using var crossingLock = new Transaction(
+                document,
+                "FamilyMEP - Lock Final Auto Leader Routes");
+            crossingLock.Start();
+            (committedOrderedTags, finalPredictedCrossings) =
+                OptimizeAutoColumnActualRowOrder(
+                    document,
+                    view,
+                    referenceTag,
+                    committedOrderedTags,
+                    placeAboveReference,
+                    rowGap,
+                    right,
+                    up,
+                    warnings);
+            NormalizeManualColumnFromRealBounds(
+                document,
+                view,
+                referenceTag,
+                committedOrderedTags,
+                alignLeftEdge,
+                placeAllBelow: !placeAboveReference,
+                rowGap,
+                right,
+                up,
+                warnings,
+                placeAllAbove: placeAboveReference,
+                normalizeAutoBodyBounds: true);
+            document.Regenerate();
+            RouteSeparatedOrthogonalLeaders(
+                document,
+                view,
+                committedOrderedTags,
+                right,
+                up,
+                warnings,
+                fixedTag: referenceTag,
+                minimumLaneClearance: Math.Max(rowGap * 0.75, 1e-8));
+            document.Regenerate();
+            RouteLeadersPreferStraight(
+                document,
+                view,
+                committedOrderedTags,
+                right,
+                up,
+                warnings,
+                fixedTag: referenceTag,
+                mixedSideEndpointDirection: analyzeBothLeaderSides
+                    ? placeAboveReference ? -1 : 1
+                    : 0);
+            document.Regenerate();
+            StabilizeAutoOrthogonalLeaders(
+                document,
+                view,
+                committedOrderedTags,
+                right,
+                up,
+                warnings);
+            document.Regenerate();
+            crossingLock.Commit();
+
+            persistedBodyBounds = MeasureTagTextBounds(
+                document,
+                view,
+                committedOrderedTags,
+                right,
+                up,
+                warnings,
+                "FamilyMEP - Confirm Final Auto Leader Routes",
+                forceHorizontal: true);
+            NormalizeAutoBodyBounds(
+                committedOrderedTags,
+                persistedBodyBounds,
+                view,
+                right,
+                up,
+                warnings,
+                reportAdjustments: false);
+            persistedFailures = GetNonOrthogonalAutoLeaderTagIds(
+                committedOrderedTags,
+                view,
                 right,
                 up,
                 persistedTolerance,
@@ -3084,7 +3277,7 @@ internal static class SmartTagRevitService
         }
         autoTransactionGroup.Assimilate();
 
-        int predictedCrossings = finalPlan.CrossingCount;
+        int predictedCrossings = finalPredictedCrossings;
         if (predictedCrossings > 0)
         {
             warnings.Add(
@@ -3109,6 +3302,114 @@ internal static class SmartTagRevitService
             selectedTags.Count - arranged,
             warnings,
             image);
+    }
+
+    private static (IndependentTag[] OrderedTags, int CrossingCount)
+        OptimizeAutoColumnActualRowOrder(
+            Document document,
+            View view,
+            IndependentTag referenceTag,
+            IReadOnlyList<IndependentTag> targetTags,
+            bool placeAboveReference,
+            double clearance,
+            XYZ right,
+            XYZ up,
+            List<string> warnings)
+    {
+        IndependentTag[] allMovable = targetTags
+            .Where(tag => !tag.Pinned && tag.Id != referenceTag.Id)
+            .GroupBy(tag => tag.Id.CompatValue())
+            .Select(group => group.First())
+            .ToArray();
+        IndependentTag[] movable = allMovable
+            .Where(tag => tag.HasLeader)
+            .ToArray();
+        if (movable.Length < 2) return (allMovable, 0);
+
+        IndependentTag[] measurable = movable.Prepend(referenceTag).ToArray();
+        Dictionary<long, LayoutRect> bounds = MeasureTagTextBoundsInOpenTransaction(
+            document,
+            view,
+            measurable,
+            right,
+            up,
+            warnings);
+        NormalizeAutoBodyBounds(
+            measurable,
+            bounds,
+            view,
+            right,
+            up,
+            warnings,
+            reportAdjustments: false);
+        if (!bounds.ContainsKey(referenceTag.Id.CompatValue()))
+            return (allMovable, 0);
+
+        SmartTagStackRouteInput BuildInput(IndependentTag tag)
+        {
+            LayoutRect body = bounds[tag.Id.CompatValue()];
+            LayoutPoint end = TryGetLeaderOrHostAnchor(
+                tag,
+                document,
+                view,
+                right,
+                up) ?? new LayoutPoint(
+                (body.MinU + body.MaxU) * 0.5,
+                (body.MinV + body.MaxV) * 0.5);
+            Reference? reference = tag.GetTaggedReferences().FirstOrDefault();
+            LayoutPoint attachment = reference is null
+                ? SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
+                    body, end)
+                : ResolveRenderedOrEstimatedAttachment(
+                    tag, reference, view, body, end, right, up);
+            return new SmartTagStackRouteInput(
+                tag.Id.CompatValue(),
+                body,
+                attachment,
+                end);
+        }
+
+        SmartTagStackRouteInput[] inputs = movable
+            .Where(tag => bounds.ContainsKey(tag.Id.CompatValue()))
+            .Select(BuildInput)
+            .ToArray();
+        if (inputs.Length < 2) return (allMovable, 0);
+        SmartTagStackRouteInput fixedInput = BuildInput(referenceTag);
+        double[] rows = inputs
+            .Select(item => item.Head.V)
+            .OrderByDescending(value => value)
+            .ToArray();
+        double routeClearance = Math.Max(
+            clearance * 0.75,
+            0.50 * Math.Max(1, view.Scale) / 304.8);
+        SmartTagFixedRowRoutePlan plan = SmartTagStackRouting.FindBestOrderForFixedRows(
+            inputs,
+            rows,
+            [fixedInput],
+            routeClearance);
+        Dictionary<long, IndependentTag> byId = movable
+            .ToDictionary(tag => tag.Id.CompatValue());
+        Dictionary<long, SmartTagStackRouteInput> inputById = inputs
+            .ToDictionary(item => item.Key);
+        var ordered = new List<IndependentTag>(plan.OrderedKeys.Count);
+        for (int index = 0; index < plan.OrderedKeys.Count; index++)
+        {
+            long key = plan.OrderedKeys[index];
+            IndependentTag tag = byId[key];
+            ordered.Add(tag);
+            double shiftV = rows[index] - inputById[key].Head.V;
+            if (Math.Abs(shiftV) > 1e-9)
+                tag.TagHeadPosition += up * shiftV;
+        }
+        HashSet<long> orderedIds = ordered
+            .Select(tag => tag.Id.CompatValue())
+            .ToHashSet();
+        ordered.AddRange(allMovable.Where(tag =>
+            !orderedIds.Contains(tag.Id.CompatValue())));
+        document.Regenerate();
+        if (placeAboveReference)
+            ordered.Reverse();
+        return (ordered.ToArray(), plan.CrossingCount);
     }
 
     public static SmartTagManualAlignResult? PickAndArrangeTagsInZone(
@@ -4192,9 +4493,14 @@ internal static class SmartTagRevitService
                     LayoutPoint attachment = bodyBounds.TryGetValue(
                         tag.Id.CompatValue(),
                         out LayoutRect bounds)
-                            ? SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
+                            ? ResolveRenderedOrEstimatedAttachment(
+                                tag,
+                                reference,
+                                view,
                                 bounds,
-                                end.Value)
+                                end.Value,
+                                right,
+                                up)
                             : insertion;
                     routes.Add(new LeaderLaneRoute(
                         tag,
@@ -4464,11 +4770,12 @@ internal static class SmartTagRevitService
                         up);
                     if (end is null) continue;
                     LayoutPoint head = Project(tag.TagHeadPosition, right, up);
-                    double shoulderV = bodyBounds.TryGetValue(
-                        tag.Id.CompatValue(),
-                        out LayoutRect bounds)
-                            ? (bounds.MinV + bounds.MaxV) * 0.5
-                            : head.V;
+                    // Revit starts the visible leader at the tag-head row.
+                    // A measured annotation bounding box contains family/text
+                    // padding and its centre can be a few pixels away from that
+                    // row, which makes the supposedly horizontal shoulder look
+                    // diagonal after regeneration.
+                    double shoulderV = head.V;
                     XYZ elbow = MoveInViewPlane(
                         tag.TagHeadPosition,
                         new LayoutPoint(end.Value.U, shoulderV),
@@ -4555,9 +4862,14 @@ internal static class SmartTagRevitService
                         LayoutPoint attachment = bodyBounds.TryGetValue(
                             tag.Id.CompatValue(),
                             out LayoutRect bounds)
-                                ? SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
+                                ? ResolveRenderedOrEstimatedAttachment(
+                                    tag,
+                                    reference,
+                                    view,
                                     bounds,
-                                    end.Value)
+                                    end.Value,
+                                    right,
+                                    up)
                                 : head;
                         routes.Add((
                             tag,
@@ -4605,23 +4917,29 @@ internal static class SmartTagRevitService
             var straight = new LayoutSegment(route.Attachment, exactHorizontalEnd);
             bool sameHorizontalRow =
                 Math.Abs(route.Attachment.V - route.End.V) <= axisTolerance;
-            bool crossesOtherBody = sameHorizontalRow && bodyBounds.Any(item =>
+            bool headRowInsideHost = route.HostBounds is LayoutRect straightHost &&
+                                     route.Attachment.V >= straightHost.MinV + axisTolerance &&
+                                     route.Attachment.V <= straightHost.MaxV - axisTolerance;
+            bool straightAvailable = sameHorizontalRow || headRowInsideHost;
+            bool crossesOtherBody = straightAvailable && bodyBounds.Any(item =>
                 item.Key != route.Tag.Id.CompatValue() &&
                 SegmentIntersectsRect(straight, item.Value.Expand(bodyClearance)));
-            bool crossesOtherLeader = sameHorizontalRow && acceptedPaths
+            bool crossesOtherLeader = straightAvailable && acceptedPaths
                 .Where((_, otherIndex) => otherIndex != index)
                 .SelectMany(path => path)
                 .Any(segment => SegmentsIntersect(straight, segment));
-            bool useStraight = SmartTagStackRouting.ShouldUseStraightHorizontalLeader(
-                route.Attachment,
-                route.End,
-                axisTolerance,
-                crossesOtherBody,
-                crossesOtherLeader);
+            bool useStraight = SmartTagStackRouting
+                .ShouldUseStraightHorizontalLeaderAtHost(
+                    route.Attachment,
+                    route.End,
+                    route.HostBounds,
+                    axisTolerance,
+                    crossesOtherBody,
+                    crossesOtherLeader);
 
             LayoutPoint orthogonalEnd = route.End;
             bool forceMixedSideElbow = mixedSides;
-            if (forceMixedSideElbow && sameHorizontalRow &&
+            if (!useStraight && forceMixedSideElbow && sameHorizontalRow &&
                 route.HostBounds is LayoutRect hostBounds)
             {
                 double requestedOffset = Math.Max(
@@ -4634,7 +4952,7 @@ internal static class SmartTagRevitService
                     requestedOffset,
                     axisTolerance);
             }
-            if (forceMixedSideElbow &&
+            if (!useStraight && forceMixedSideElbow &&
                 Math.Abs(orthogonalEnd.V - route.Attachment.V) > axisTolerance)
             {
                 useStraight = false;
@@ -4753,11 +5071,6 @@ internal static class SmartTagRevitService
                 try
                 {
                     LayoutPoint head = Project(tag.TagHeadPosition, right, up);
-                    double shoulderV = bodyBounds.TryGetValue(
-                        tag.Id.CompatValue(),
-                        out LayoutRect bounds)
-                            ? (bounds.MinV + bounds.MaxV) * 0.5
-                            : head.V;
                     foreach (Reference reference in tag.GetTaggedReferences())
                     {
                         LayoutPoint? projectedEnd = TryGetLeaderRouteEnd(
@@ -4767,6 +5080,18 @@ internal static class SmartTagRevitService
                             failedTags.Add(tag.Id.CompatValue());
                             continue;
                         }
+                        double shoulderV = bodyBounds.TryGetValue(
+                            tag.Id.CompatValue(),
+                            out LayoutRect body)
+                                ? ResolveRenderedOrEstimatedAttachment(
+                                    tag,
+                                    reference,
+                                    view,
+                                    body,
+                                    projectedEnd.Value,
+                                    right,
+                                    up).V
+                                : head.V;
                         try { tag.LeaderEndCondition = LeaderEndCondition.Free; }
                         catch { }
                         XYZ planeOrigin = tag.TagHeadPosition;
@@ -4790,6 +5115,7 @@ internal static class SmartTagRevitService
 
             failedTags.UnionWith(GetNonOrthogonalAutoLeaderTagIds(
                 distinctTags,
+                view,
                 right,
                 up,
                 tolerance,
@@ -4808,6 +5134,7 @@ internal static class SmartTagRevitService
 
     private static HashSet<long> GetNonOrthogonalAutoLeaderTagIds(
         IReadOnlyList<IndependentTag> tags,
+        View view,
         XYZ right,
         XYZ up,
         double tolerance,
@@ -4820,14 +5147,22 @@ internal static class SmartTagRevitService
             try
             {
                 LayoutPoint head = Project(tag.TagHeadPosition, right, up);
-                double shoulderV = bodyBounds is not null && bodyBounds.TryGetValue(
-                    tag.Id.CompatValue(),
-                    out LayoutRect bounds)
-                        ? (bounds.MinV + bounds.MaxV) * 0.5
-                        : head.V;
                 foreach (Reference reference in tag.GetTaggedReferences())
                 {
                     LayoutPoint end = Project(tag.GetLeaderEnd(reference), right, up);
+                    double shoulderV = bodyBounds is not null &&
+                                       bodyBounds.TryGetValue(
+                                           tag.Id.CompatValue(),
+                                           out LayoutRect body)
+                        ? ResolveRenderedOrEstimatedAttachment(
+                            tag,
+                            reference,
+                            view,
+                            body,
+                            end,
+                            right,
+                            up).V
+                        : head.V;
                     LayoutPoint elbow;
                     try
                     {
@@ -4837,8 +5172,7 @@ internal static class SmartTagRevitService
                     {
                         // No elbow is valid only when Revit kept one exact
                         // horizontal segment from the text head to the host.
-                        if (Math.Abs(end.V - head.V) <= tolerance ||
-                            Math.Abs(end.V - shoulderV) <= tolerance)
+                        if (Math.Abs(end.V - shoulderV) <= tolerance)
                             continue;
                         failed.Add(tag.Id.CompatValue());
                         continue;
@@ -4848,14 +5182,10 @@ internal static class SmartTagRevitService
                         Math.Abs(elbow.U - head.U) <= tolerance &&
                         Math.Abs(elbow.V - head.V) <= tolerance;
                     bool orthogonalAtHead =
-                        Math.Abs(elbow.V - head.V) <= tolerance &&
-                        Math.Abs(elbow.U - end.U) <= tolerance;
-                    bool orthogonalAtMeasuredBody =
                         Math.Abs(elbow.V - shoulderV) <= tolerance &&
                         Math.Abs(elbow.U - end.U) <= tolerance;
                     if (collapsedStraight ||
-                        orthogonalAtHead ||
-                        orthogonalAtMeasuredBody)
+                        orthogonalAtHead)
                         continue;
                     failed.Add(tag.Id.CompatValue());
                 }
@@ -9326,6 +9656,147 @@ internal static class SmartTagRevitService
 
     private static LayoutPoint Project(XYZ point, XYZ right, XYZ up) =>
         new(point.DotProduct(right), point.DotProduct(up));
+
+    private static LayoutPoint? TryGetRenderedLeaderAttachment(
+        IndependentTag tag,
+        Reference reference,
+        View view,
+        LayoutRect bodyBounds,
+        XYZ right,
+        XYZ up)
+    {
+        LayoutPoint elbow;
+        try
+        {
+            if (!tag.HasLeaderElbow(reference)) return null;
+            elbow = Project(tag.GetLeaderElbow(reference), right, up);
+        }
+        catch
+        {
+            return null;
+        }
+
+        IReadOnlyList<LayoutSegment> segments = GetRenderedTagSegments(
+            tag,
+            view,
+            right,
+            up);
+        if (segments.Count == 0) return null;
+        double endpointTolerance = Math.Max(
+            1e-6,
+            0.30 * Math.Max(1, view.Scale) / 304.8);
+        double bodyTolerance = Math.Max(
+            endpointTolerance,
+            0.60 * Math.Max(1, view.Scale) / 304.8);
+        return SmartTagStackRouting.FindRenderedLeaderAttachment(
+            segments,
+            elbow,
+            bodyBounds,
+            endpointTolerance,
+            bodyTolerance);
+    }
+
+    private static LayoutPoint ResolveRenderedOrEstimatedAttachment(
+        IndependentTag tag,
+        Reference reference,
+        View view,
+        LayoutRect bodyBounds,
+        LayoutPoint leaderEnd,
+        XYZ right,
+        XYZ up)
+    {
+        // IndependentTag.TagHeadPosition is the family insertion point.  For
+        // many multi-line project tags it is a few pixels above or below the
+        // point where Revit actually joins the leader to the label.  The API
+        // does not expose that join point, and IndependentTag geometry does not
+        // reliably contain the rendered annotation leader on every Revit
+        // version.  The leader-off body measured above is stable, however:
+        // Revit joins a horizontal tag leader at the vertical centre of that
+        // visible body. Prefer the attachment recovered from Revit's rendered
+        // curves when it is available; that is the only value that includes a
+        // family's internal text/baseline offset. Fall back to the stable
+        // leader-off body centre on Revit versions/families that do not expose
+        // annotation curves through GeometryElement.
+        return TryGetRenderedLeaderAttachment(
+                   tag,
+                   reference,
+                   view,
+                   bodyBounds,
+                   right,
+                   up) ??
+               SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
+                   bodyBounds,
+                   leaderEnd);
+    }
+
+    private static IReadOnlyList<LayoutSegment> GetRenderedTagSegments(
+        IndependentTag tag,
+        View view,
+        XYZ right,
+        XYZ up)
+    {
+        var result = new List<LayoutSegment>();
+        try
+        {
+            GeometryElement? geometry = tag.get_Geometry(new Options
+            {
+                ComputeReferences = false,
+                IncludeNonVisibleObjects = true,
+                View = view
+            });
+            if (geometry is not null)
+                CollectRenderedTagSegments(geometry, right, up, result);
+        }
+        catch
+        {
+            // Some annotation families do not expose their view graphics.
+            // Callers retain the API-head fallback for those families.
+        }
+        return result;
+    }
+
+    private static void CollectRenderedTagSegments(
+        GeometryElement geometry,
+        XYZ right,
+        XYZ up,
+        List<LayoutSegment> output)
+    {
+        foreach (GeometryObject item in geometry)
+        {
+            if (item is GeometryInstance instance)
+            {
+                GeometryElement? nested = null;
+                try { nested = instance.GetInstanceGeometry(); }
+                catch { }
+                if (nested is not null)
+                    CollectRenderedTagSegments(nested, right, up, output);
+                continue;
+            }
+
+            IList<XYZ>? points = null;
+            try
+            {
+                if (item is Curve curve)
+                    points = curve.Tessellate();
+                else if (item is PolyLine polyLine)
+                    points = polyLine.GetCoordinates();
+            }
+            catch
+            {
+                // Ignore one malformed graphics primitive and keep scanning.
+            }
+            if (points is null || points.Count < 2) continue;
+            for (int index = 1; index < points.Count; index++)
+            {
+                LayoutPoint start = Project(points[index - 1], right, up);
+                LayoutPoint end = Project(points[index], right, up);
+                if (Math.Abs(start.U - end.U) <= 1e-10 &&
+                    Math.Abs(start.V - end.V) <= 1e-10)
+                    continue;
+                output.Add(new LayoutSegment(start, end));
+            }
+        }
+    }
 
     private static LayoutRect ProjectBox(BoundingBoxXYZ box, XYZ right, XYZ up)
         => ProjectBox(box, Transform.Identity, right, up);

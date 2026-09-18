@@ -12,6 +12,7 @@ public sealed class DrainConnectionCommand : IExternalCommand
     {
         try
         {
+            Application.ShuffleRibbonIcon();
             return Application.Plugin.Execute(commandData, ref message, elements);
         }
         catch (Exception exception)

@@ -114,10 +114,21 @@ internal static class SmartDimensionService
             .Where(item => item is not Duct duct || !IsRectangularDuct(duct))
             .ToList();
 
-        using var transaction = new Transaction(document, "FamilyMEP - Smart Dimensions");
-        transaction.Start();
-        int replaced = DeleteOwnedDimensions(
-            document, view, targets.Select(item => item.Id.CompatValue()).ToHashSet());
+        // Use a TransactionGroup only for one clean Undo item. Every generated
+        // dimension is committed in its own Transaction below. A bad reference
+        // can therefore roll back only that chain instead of discarding every
+        // valid dimension created for the rest of the view.
+        using var transactionGroup = new TransactionGroup(document, "FamilyMEP - Smart Dimensions");
+        transactionGroup.Start();
+        int replaced;
+        using (var cleanup = new Transaction(document, "FamilyMEP - Replace Smart Dimensions"))
+        {
+            cleanup.Start();
+            replaced = DeleteOwnedDimensions(
+                document, view, targets.Select(item => item.Id.CompatValue()).ToHashSet());
+            if (replaced > 0) cleanup.Commit();
+            else cleanup.RollBack();
+        }
         if (replaced > 0)
             messages.Add($"Replaced {replaced} previous Smart Dim dimension(s) in this selection.");
         obstacles = CollectObstacles(document, view, basis);
@@ -146,9 +157,9 @@ internal static class SmartDimensionService
         created += recoveredCenterDimensions;
 
         if (created == 0)
-            transaction.RollBack();
+            transactionGroup.RollBack();
         else
-            transaction.Commit();
+            transactionGroup.Assimilate();
 
         if (created > 0)
             uidoc.RefreshActiveView();
@@ -264,9 +275,10 @@ internal static class SmartDimensionService
             return 0;
         }
         ReferenceArray references = ToReferenceArray(first, second);
-        if (!TryCreateDimension(document, view, line, references, existing, messages, out Dimension? dimension))
+        if (!TryCreateDimension(
+                document, view, line, references,
+                [instance.Id.CompatValue()], existing, messages, out Dimension? dimension))
             return 0;
-        MarkOwned(dimension!, [instance.Id.CompatValue()]);
         AddDimensionObstacle(document, view, dimension!, basis, obstacles);
         return 1;
     }
@@ -435,6 +447,15 @@ internal static class SmartDimensionService
                     datums, measureAxis, minCenter, maxCenter);
                 if (datumPair is null)
                 {
+                    if (TryCreateTargetOnlyCenterChain(
+                            document, view, chain, horizontal, basis, obstacles,
+                            existing, messages, dimensionedTargetIds, preferredSide,
+                            out Dimension? targetOnly))
+                    {
+                        AddDimensionObstacle(document, view, targetOnly!, basis, obstacles);
+                        created++;
+                        continue;
+                    }
                     AddMessage(messages,
                         horizontal
                             ? $"Local center cluster ({chain.Count} item): two outside Wall/Grid endpoints were not found; trying each element separately."
@@ -514,8 +535,18 @@ internal static class SmartDimensionService
 
                 if (!TryCreateDimension(
                         document, view, line, ToReferenceArray(references.ToArray()),
+                        chain.Select(item => item.Element.Id.CompatValue()),
                         existing, messages, out Dimension? dimension))
                 {
+                    if (TryCreateTargetOnlyCenterChain(
+                            document, view, chain, horizontal, basis, obstacles,
+                            existing, messages, dimensionedTargetIds, preferredSide,
+                            out Dimension? targetOnly))
+                    {
+                        AddDimensionObstacle(document, view, targetOnly!, basis, obstacles);
+                        created++;
+                        continue;
+                    }
                     if (!horizontal)
                     {
                         AddMessage(messages,
@@ -527,7 +558,6 @@ internal static class SmartDimensionService
                         obstacles, existing, messages, dimensionedTargetIds, preferredSide);
                     continue;
                 }
-                MarkOwned(dimension!, chain.Select(item => item.Element.Id.CompatValue()));
                 createdStationChains.Add(stationSignature);
                 AddDimensionObstacle(document, view, dimension!, basis, obstacles);
                 foreach (CenterTarget item in chain) dimensionedTargetIds.Add(item.Element.Id.CompatValue());
@@ -535,6 +565,75 @@ internal static class SmartDimensionService
             }
         }
         return created;
+    }
+
+    private static bool TryCreateTargetOnlyCenterChain(
+        Document document,
+        View view,
+        IReadOnlyList<CenterTarget> chain,
+        bool horizontal,
+        ViewBasis basis,
+        List<Obstacle> obstacles,
+        HashSet<string> existing,
+        List<string> messages,
+        HashSet<long> dimensionedTargetIds,
+        int preferredSide,
+        out Dimension? dimension)
+    {
+        dimension = null;
+        XYZ measureAxis = horizontal ? basis.Right : basis.Up;
+        XYZ offsetAxis = horizontal ? basis.Up : basis.Right;
+        var stations = chain
+            .Select(item =>
+            {
+                Reference? reference = horizontal ? item.XReference : item.YReference;
+                double coordinate = reference is null
+                    ? item.Center.DotProduct(measureAxis)
+                    : GetCenterReferenceCoordinate(item, reference, basis, measureAxis);
+                return (Coordinate: coordinate, Reference: reference);
+            })
+            .Where(item => item.Reference is not null)
+            .Select(item => (item.Coordinate, Reference: item.Reference!))
+            .OrderBy(item => item.Coordinate)
+            .ToList();
+
+        var uniqueStations = new List<(double Coordinate, Reference Reference)>();
+        foreach (var station in stations)
+        {
+            if (uniqueStations.Count > 0 &&
+                Math.Abs(station.Coordinate - uniqueStations[^1].Coordinate) < 1.0 / 304.8)
+                continue;
+            uniqueStations.Add(station);
+        }
+        List<Reference> references = DistinctReferences(
+            document, uniqueStations.Select(item => item.Reference));
+        if (references.Count < 2) return false;
+
+        IReadOnlyList<XYZ> points = chain
+            .SelectMany(item => GetBoundingPoints(item.Element, view)).ToList();
+        if (points.Count == 0) return false;
+        (double minOffset, double maxOffset) = Extents(points, offsetAxis);
+        double minMeasure = uniqueStations.First().Coordinate;
+        double maxMeasure = uniqueStations.Last().Coordinate;
+        Line? line = ChooseClearLine(
+            basis, measureAxis, offsetAxis,
+            minMeasure, maxMeasure, minOffset, maxOffset,
+            view.Scale, obstacles, -1, preferredSide,
+            collisionMinMeasure: minMeasure,
+            collisionMaxMeasure: maxMeasure);
+        if (line is null) return false;
+
+        if (!TryCreateDimension(
+                document, view, line, ToReferenceArray(references.ToArray()),
+                chain.Select(item => item.Element.Id.CompatValue()),
+                existing, messages, out dimension))
+            return false;
+
+        foreach (CenterTarget item in chain)
+            dimensionedTargetIds.Add(item.Element.Id.CompatValue());
+        AddMessage(messages,
+            $"Created a {(horizontal ? "horizontal" : "vertical")} element-to-element chain because linked Wall/Grid references were unavailable.");
+        return true;
     }
 
     private static int CreateIndividualCenterDimensions(
@@ -579,8 +678,8 @@ internal static class SmartDimensionService
             if (!TryCreateDimension(
                     document, view, line,
                     ToReferenceArray(datumPair.Lower.Reference, center, datumPair.Upper.Reference),
+                    [target.Element.Id.CompatValue()],
                     existing, messages, out Dimension? dimension)) continue;
-            MarkOwned(dimension!, [target.Element.Id.CompatValue()]);
             AddDimensionObstacle(document, view, dimension!, basis, obstacles);
             dimensionedTargetIds.Add(target.Element.Id.CompatValue());
             created++;
@@ -672,11 +771,11 @@ internal static class SmartDimensionService
                 .First();
         }
 
-        return GetPlanarFaceReferences(instance, view, basis)
-            .Where(item => Math.Abs(item.Normal.DotProduct(measureAxis)) >= 0.985)
-            .OrderBy(item => Math.Abs(item.CoordinateAlong(measureAxis) - centerCoordinate))
-            .Select(item => item.Reference)
-            .FirstOrDefault();
+        // A face obtained by walking a FamilyInstance's symbol geometry is a
+        // transformed geometry copy. It may look usable while the transaction
+        // is open, then become an invalid dimension reference at regeneration
+        // or commit. Only authored instance references are safe here.
+        return null;
     }
 
     private static bool TryGetReferenceStation(
@@ -741,7 +840,11 @@ internal static class SmartDimensionService
         XYZ snappedAxis = horizontalRun ? basis.Right : basis.Up;
         if (Math.Abs(direction.DotProduct(snappedAxis)) < 0.95) return null;
 
-        Reference centerReference = line.Reference ?? new Reference(curve);
+        // `new Reference(curve)` is only an element reference. Revit sometimes
+        // accepts it while NewDimension is being called, but later rejects the
+        // dimension because it is not a persistent geometric centreline. Skip
+        // that axis when the LocationCurve does not expose a real reference.
+        Reference? centerReference = line.Reference;
         return new CenterTarget(
             curve,
             GetCenter(curve, view),
@@ -874,10 +977,10 @@ internal static class SmartDimensionService
             Dimension? dimension = null;
             bool chainCreated = line is not null && TryCreateDimension(
                 document, view, line, ToReferenceArray(DistinctReferences(document, references).ToArray()),
+                members.Select(item => item.Duct.Id.CompatValue()),
                 existing, messages, out dimension);
             if (chainCreated)
             {
-                MarkOwned(dimension!, members.Select(item => item.Duct.Id.CompatValue()));
                 AddDimensionObstacle(document, view, dimension!, basis, obstacles);
                 foreach (DuctEdgeTarget member in members)
                     dimensionedTargetIds.Add(member.Duct.Id.CompatValue());
@@ -893,7 +996,6 @@ internal static class SmartDimensionService
                 if (!TryCreateDuctWidthDimension(
                         document, view, member.Duct, basis, datums, obstacles, existing,
                         messages, out Dimension? fallback)) continue;
-                MarkOwned(fallback!, [member.Duct.Id.CompatValue()]);
                 AddDimensionObstacle(document, view, fallback!, basis, obstacles);
                 dimensionedTargetIds.Add(member.Duct.Id.CompatValue());
                 created++;
@@ -1049,6 +1151,7 @@ internal static class SmartDimensionService
                 first.Reference,
                 second.Reference,
                 datumPair.Upper.Reference),
+            [duct.Id.CompatValue()],
             existing, messages, out dimension);
     }
 
@@ -1057,31 +1160,121 @@ internal static class SmartDimensionService
         View view,
         Line line,
         ReferenceArray references,
+        IEnumerable<long> sourceIds,
         HashSet<string> existing,
         List<string> messages,
         out Dimension? dimension)
     {
         dimension = null;
+        if (!ValidateDimensionReferences(document, references, out string invalidReason))
+        {
+            AddMessage(messages, "Dimension skipped: " + invalidReason);
+            return false;
+        }
         string signature = ReferenceSignature(document, references);
         if (existing.Contains(signature))
             return false;
 
-        using var sub = new SubTransaction(document);
-        sub.Start();
+        using var transaction = new Transaction(document, "FamilyMEP - Smart Dimension Chain");
+        transaction.Start();
+        var failurePreprocessor = new SmartDimensionFailurePreprocessor();
+        FailureHandlingOptions failureOptions = transaction.GetFailureHandlingOptions();
+        failureOptions.SetFailuresPreprocessor(failurePreprocessor);
+        failureOptions.SetClearAfterRollback(true);
+        transaction.SetFailureHandlingOptions(failureOptions);
         try
         {
             dimension = document.Create.NewDimension(view, line, references);
-            sub.Commit();
+            if (dimension is null || !dimension.IsValidObject ||
+                dimension.References is null || dimension.References.Size < 2)
+                throw new InvalidOperationException("Revit returned a dimension with invalid references.");
+            MarkOwned(dimension, sourceIds);
+            TransactionStatus status = transaction.Commit();
+            if (status != TransactionStatus.Committed)
+            {
+                dimension = null;
+                string failure = failurePreprocessor.Errors.FirstOrDefault()
+                    ?? "Revit did not commit its references.";
+                AddMessage(messages, "Dimension skipped: " + failure);
+                return false;
+            }
             existing.Add(signature);
             return true;
         }
         catch (Exception exception)
         {
-            if (sub.GetStatus() == TransactionStatus.Started)
-                sub.RollBack();
+            if (transaction.GetStatus() == TransactionStatus.Started)
+                transaction.RollBack();
+            dimension = null;
             AddMessage(messages, "Dimension skipped: " + Friendly(exception));
             return false;
         }
+    }
+
+    private static bool ValidateDimensionReferences(
+        Document document,
+        ReferenceArray references,
+        out string reason)
+    {
+        reason = string.Empty;
+        if (references.Size < 2)
+        {
+            reason = "fewer than two references were supplied.";
+            return false;
+        }
+
+        var stableReferences = new HashSet<string>(StringComparer.Ordinal);
+        for (int index = 0; index < references.Size; index++)
+        {
+            Reference? reference = references.get_Item(index);
+            if (reference is null)
+            {
+                reason = "an empty reference was supplied.";
+                return false;
+            }
+
+            string stable;
+            try
+            {
+                stable = reference.ConvertToStableRepresentation(document);
+                if (string.IsNullOrWhiteSpace(stable))
+                    throw new InvalidOperationException("The stable reference is empty.");
+                Reference parsed = Reference.ParseFromStableRepresentation(document, stable);
+                if (parsed is null)
+                    throw new InvalidOperationException("The stable reference cannot be restored.");
+            }
+            catch (Exception exception)
+            {
+                reason = "a transient Revit reference was rejected (" + Friendly(exception) + ").";
+                return false;
+            }
+
+            if (!stableReferences.Add(stable))
+            {
+                reason = "the same geometric reference was supplied more than once.";
+                return false;
+            }
+
+            Element? hostElement = document.GetElement(reference.ElementId);
+            if (hostElement is null || !hostElement.IsValidObject)
+            {
+                reason = "a referenced host element no longer exists.";
+                return false;
+            }
+
+            long linkedId = reference.LinkedElementId.CompatValue();
+            if (linkedId > 0)
+            {
+                if (hostElement is not RevitLinkInstance link ||
+                    link.GetLinkDocument()?.GetElement(reference.LinkedElementId) is not Element linkedElement ||
+                    !linkedElement.IsValidObject)
+                {
+                    reason = "a referenced linked element is unavailable.";
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private static Line? ChooseClearLine(
@@ -1262,12 +1455,12 @@ internal static class SmartDimensionService
         ViewBasis basis,
         List<Obstacle> obstacles)
     {
-        document.Regenerate();
         // Keep Revit's normal dimension text placement. The tool only chooses
         // a clear baseline; it no longer moves segment text or creates a custom
         // leader style.
         try
         {
+            if (!dimension.IsValidObject) return;
             Curve? curve = dimension.Curve;
             if (curve is not null && curve.IsBound)
             {
@@ -1714,6 +1907,39 @@ internal static class SmartDimensionService
     {
         if (messages.Count < 30 && !messages.Contains(message, StringComparer.Ordinal))
             messages.Add(message);
+    }
+
+    private sealed class SmartDimensionFailurePreprocessor : IFailuresPreprocessor
+    {
+        public List<string> Errors { get; } = [];
+
+        public FailureProcessingResult PreprocessFailures(FailuresAccessor failuresAccessor)
+        {
+            bool hasError = false;
+            foreach (FailureMessageAccessor failure in failuresAccessor.GetFailureMessages())
+            {
+                if (failure.GetSeverity() == FailureSeverity.Warning)
+                {
+                    failuresAccessor.DeleteWarning(failure);
+                    continue;
+                }
+
+                hasError = true;
+                string description;
+                try { description = failure.GetDescriptionText(); }
+                catch { description = "Revit rejected a generated dimension reference."; }
+                if (!string.IsNullOrWhiteSpace(description) &&
+                    !Errors.Contains(description, StringComparer.Ordinal))
+                    Errors.Add(description);
+            }
+
+            // Invalid dimension references are posted during Transaction.Commit,
+            // after NewDimension has already returned successfully. Roll back the
+            // tool transaction here so Revit never opens its modal failure dialog.
+            return hasError
+                ? FailureProcessingResult.ProceedWithRollBack
+                : FailureProcessingResult.Continue;
+        }
     }
 
     private sealed record DatumReference(Reference Reference, XYZ Normal, double Coordinate, string Kind);

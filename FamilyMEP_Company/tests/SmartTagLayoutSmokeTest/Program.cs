@@ -107,6 +107,54 @@ Require(
     fixedRowPlan.OrderedKeys.SequenceEqual([22L, 21L]) &&
     fixedRowPlan.CrossingCount == 0,
     "Fixed-row leader analysis must reorder inverted host routes before H-ALIGN/AVOID writes them.");
+SmartTagFixedRowRoutePlan rightColumnCrossingPlan =
+    SmartTagStackRouting.FindBestOrderForFixedRows(
+        [
+            new SmartTagStackRouteInput(
+                31,
+                new LayoutRect(9, 7.5, 11, 8.5),
+                new LayoutPoint(9, 8),
+                new LayoutPoint(5, 4)),
+            new SmartTagStackRouteInput(
+                32,
+                new LayoutRect(9, 6.5, 11, 7.5),
+                new LayoutPoint(9, 7),
+                new LayoutPoint(6, 4))
+        ],
+        [8.0, 7.0],
+        fixedRoutes: [],
+        clearance: 0.05);
+Require(
+    rightColumnCrossingPlan.OrderedKeys.SequenceEqual([31L, 32L]) &&
+    rightColumnCrossingPlan.CrossingCount == 0,
+    "A right-side AUTO column must keep the farther-left host on the upper row so its shoulder does not cross the nearer vertical tail.");
+SmartTagFixedRowRoutePlan leaderThroughTextPlan =
+    SmartTagStackRouting.FindBestOrderForFixedRows(
+        [
+            new SmartTagStackRouteInput(
+                41,
+                new LayoutRect(4, 7.6, 6, 8.4),
+                new LayoutPoint(4, 8),
+                new LayoutPoint(4, 8)),
+            new SmartTagStackRouteInput(
+                42,
+                new LayoutRect(12, 5.6, 14, 6.4),
+                new LayoutPoint(12, 6),
+                new LayoutPoint(12, 6))
+        ],
+        [8.0, 6.0],
+        fixedRoutes:
+        [
+            new SmartTagStackRouteInput(
+                43,
+                new LayoutRect(-2, 9, -1, 10),
+                new LayoutPoint(0, 8),
+                new LayoutPoint(10, 8))
+        ],
+        clearance: 0.10);
+Require(
+    leaderThroughTextPlan.OrderedKeys.SequenceEqual([42L, 41L]),
+    "Fixed-row optimization must move a tag body away when the fixed sample leader passes through its current row.");
 
 try
 {
@@ -760,13 +808,62 @@ Require(
         crossesOtherLeader: true),
     "AUTO must collapse to one straight horizontal leader only on the same row and with no clash.");
 Require(
+    SmartTagStackRouting.ShouldUseStraightHorizontalLeaderAtHost(
+        new LayoutPoint(2, 5),
+        new LayoutPoint(8, 4.8),
+        new LayoutRect(7, 4, 9, 6),
+        axisTolerance: 0.01,
+        crossesOtherBody: false,
+        crossesOtherLeader: false) &&
+    !SmartTagStackRouting.ShouldUseStraightHorizontalLeaderAtHost(
+        new LayoutPoint(2, 6.2),
+        new LayoutPoint(8, 4.8),
+        new LayoutRect(7, 4, 9, 6),
+        axisTolerance: 0.01,
+        crossesOtherBody: false,
+        crossesOtherLeader: false) &&
+    !SmartTagStackRouting.ShouldUseStraightHorizontalLeaderAtHost(
+        new LayoutPoint(2, 5),
+        new LayoutPoint(8, 4.8),
+        new LayoutRect(7, 4, 9, 6),
+        axisTolerance: 0.01,
+        crossesOtherBody: false,
+        crossesOtherLeader: true),
+    "AUTO must snap the free endpoint to the tag row when that row lies inside the host, " +
+    "but retain an elbow when the row is outside or the straight path clashes.");
+Require(
+    SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
+        multilineBody,
+        new LayoutPoint(0, 30),
+        attachmentV: 21.6) == new LayoutPoint(10, 21.6) &&
+    SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
+        multilineBody,
+        new LayoutPoint(20, 30),
+        attachmentV: 21.6) == new LayoutPoint(14, 21.6),
+    "The routing helper must still accept an explicit attachment row when a caller has one.");
+Require(
     SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
         multilineBody,
         new LayoutPoint(0, 30)) == new LayoutPoint(10, 22) &&
     SmartTagStackRouting.GetVisibleLeaderAttachmentPoint(
         multilineBody,
         new LayoutPoint(20, 30)) == new LayoutPoint(14, 22),
-    "AUTO leader geometry must use the host-facing visible body edge and body center row, not TagHeadPosition.");
+    "AUTO must use the measured leader-off body centre for multi-line tag shoulders; " +
+    "TagHeadPosition can be offset from the rendered leader attachment.");
+LayoutRect renderedTagBody = new(10, 20, 14, 24);
+LayoutPoint? renderedAttachment = SmartTagStackRouting.FindRenderedLeaderAttachment(
+    [
+        new LayoutSegment(new LayoutPoint(4, 19), new LayoutPoint(4, 22)),
+        new LayoutSegment(new LayoutPoint(4, 22), new LayoutPoint(10, 22.35)),
+        new LayoutSegment(new LayoutPoint(10.5, 21), new LayoutPoint(13.5, 21))
+    ],
+    new LayoutPoint(4, 22),
+    renderedTagBody,
+    endpointTolerance: 0.01,
+    bodyTolerance: 0.05);
+Require(
+    renderedAttachment == new LayoutPoint(10, 22.35),
+    "AUTO must recover the real rendered tag attachment from the curve that starts at the API elbow.");
 LayoutRect leaderlessBodyAtInsertion = new(5, 20, 7, 24);
 Require(
     SmartTagStackRouting.AnchorLeaderlessBodyToLiveBounds(

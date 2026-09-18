@@ -142,7 +142,7 @@
                 </Grid.ColumnDefinitions>
                 <Grid Grid.Column="0" Grid.ColumnSpan="3">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="52"/>
+                        <ColumnDefinition Width="68"/>
                         <ColumnDefinition Width="3"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
@@ -151,14 +151,16 @@
                               FontWeight="SemiBold" FontSize="8.5"
                               Foreground="#17212A" Background="#F4F8FB"
                               BorderBrush="#8E78D4" BorderThickness="1"
-                              ToolTip="Choose whether AUTO and extra H-ALIGN tags are placed below or above the sample rows.">
+                              ToolTip="Choose classic BELOW/ABOVE, or BOTH ↓/↑ to analyze leaders from both left and right sides before placing the stack.">
                         <ComboBoxItem Content="BELOW" Tag="Below"/>
                         <ComboBoxItem Content="ABOVE" Tag="Above"/>
+                        <ComboBoxItem Content="BOTH ↓" Tag="BothBelow"/>
+                        <ComboBoxItem Content="BOTH ↑" Tag="BothAbove"/>
                     </ComboBox>
                     <Button x:Name="quick_auto_column_btn" Grid.Column="2"
                         Height="30" Style="{StaticResource QuickActionButton}"
                         Background="#7A55D8" BorderBrush="#C7B4FF"
-                        ToolTip="1) Pick tag mẫu. 2) Quét khung chạm text/leader. Tất cả tag được xếp xuống dưới tag mẫu.">
+                        ToolTip="1) Choose BOTH ↓ or BOTH ↑. 2) Pick the fixed sample. 3) Scan target text/leaders. AUTO analyzes both leader sides before ordering the rows.">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                         <TextBlock Text="↕" FontSize="13" FontWeight="Bold" Margin="0,0,4,0"/>
                         <TextBlock Text="AUTO" FontSize="9.5" FontWeight="Bold"

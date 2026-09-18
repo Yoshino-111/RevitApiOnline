@@ -11,23 +11,28 @@ namespace FamilyMEP.Ribbon;
 internal sealed class DrainConnectionRibbonAnimator : IDisposable
 {
     private const int FrameCount = 14;
+    private const int VariantCount = 4;
     private const string ResourcePrefix = "FamilyMEP.RibbonIcons.DrainConnection";
 
     private readonly PushButton _button;
-    private readonly IReadOnlyList<ImageSource> _smallFrames;
-    private readonly IReadOnlyList<ImageSource> _largeFrames;
+    private readonly IReadOnlyList<IReadOnlyList<ImageSource>> _smallVariants;
+    private readonly IReadOnlyList<IReadOnlyList<ImageSource>> _largeVariants;
     private readonly DispatcherTimer _timer;
+    private readonly Random _random;
+    private int _variantIndex;
     private int _frameIndex;
     private bool _disposed;
 
     private DrainConnectionRibbonAnimator(
         PushButton button,
-        IReadOnlyList<ImageSource> smallFrames,
-        IReadOnlyList<ImageSource> largeFrames)
+        IReadOnlyList<IReadOnlyList<ImageSource>> smallVariants,
+        IReadOnlyList<IReadOnlyList<ImageSource>> largeVariants)
     {
         _button = button;
-        _smallFrames = smallFrames;
-        _largeFrames = largeFrames;
+        _smallVariants = smallVariants;
+        _largeVariants = largeVariants;
+        _random = new Random(unchecked(Environment.TickCount * 397 ^ GetHashCode()));
+        _variantIndex = _random.Next(VariantCount);
         _timer = new DispatcherTimer(DispatcherPriority.Background)
         {
             // Revit does not animate GIF files on ribbon buttons. A short PNG
@@ -44,9 +49,9 @@ internal sealed class DrainConnectionRibbonAnimator : IDisposable
     {
         try
         {
-            var smallFrames = LoadFrames(resourceAssembly, 16);
-            var largeFrames = LoadFrames(resourceAssembly, 32);
-            return new DrainConnectionRibbonAnimator(button, smallFrames, largeFrames);
+            var smallVariants = LoadVariants(resourceAssembly, 16);
+            var largeVariants = LoadVariants(resourceAssembly, 32);
+            return new DrainConnectionRibbonAnimator(button, smallVariants, largeVariants);
         }
         catch
         {
@@ -68,26 +73,54 @@ internal sealed class DrainConnectionRibbonAnimator : IDisposable
         _timer.Tick -= OnTick;
     }
 
-    private static IReadOnlyList<ImageSource> LoadFrames(Assembly assembly, int size)
+    public void ShuffleVariant()
     {
-        var frames = new List<ImageSource>(FrameCount);
-        for (var index = 0; index < FrameCount; index++)
+        if (_disposed || VariantCount < 2)
         {
-            var resourceName =
-                $"{ResourcePrefix}.drain-connection-{index:00}-{size}.png";
-            using Stream stream = assembly.GetManifestResourceStream(resourceName)
-                ?? throw new InvalidOperationException($"Ribbon icon resource was not found: {resourceName}");
-
-            var decoder = BitmapDecoder.Create(
-                stream,
-                BitmapCreateOptions.PreservePixelFormat,
-                BitmapCacheOption.OnLoad);
-            BitmapFrame frame = decoder.Frames[0];
-            frame.Freeze();
-            frames.Add(frame);
+            return;
         }
 
-        return frames;
+        // Draw from one fewer option and skip over the current index. This
+        // guarantees that every command run visibly changes the icon.
+        var next = _random.Next(VariantCount - 1);
+        if (next >= _variantIndex)
+        {
+            next++;
+        }
+
+        _variantIndex = next;
+        _frameIndex = 0;
+        ApplyFrame(_frameIndex);
+    }
+
+    private static IReadOnlyList<IReadOnlyList<ImageSource>> LoadVariants(
+        Assembly assembly,
+        int size)
+    {
+        var variants = new List<IReadOnlyList<ImageSource>>(VariantCount);
+        for (var variant = 0; variant < VariantCount; variant++)
+        {
+            var frames = new List<ImageSource>(FrameCount);
+            for (var index = 0; index < FrameCount; index++)
+            {
+                var resourceName =
+                    $"{ResourcePrefix}.drain-connection-v{variant:00}-{index:00}-{size}.png";
+                using Stream stream = assembly.GetManifestResourceStream(resourceName)
+                    ?? throw new InvalidOperationException($"Ribbon icon resource was not found: {resourceName}");
+
+                var decoder = BitmapDecoder.Create(
+                    stream,
+                    BitmapCreateOptions.PreservePixelFormat,
+                    BitmapCacheOption.OnLoad);
+                BitmapFrame frame = decoder.Frames[0];
+                frame.Freeze();
+                frames.Add(frame);
+            }
+
+            variants.Add(frames);
+        }
+
+        return variants;
     }
 
     private void OnTick(object? sender, EventArgs eventArgs)
@@ -103,7 +136,7 @@ internal sealed class DrainConnectionRibbonAnimator : IDisposable
 
     private void ApplyFrame(int index)
     {
-        _button.Image = _smallFrames[index];
-        _button.LargeImage = _largeFrames[index];
+        _button.Image = _smallVariants[_variantIndex][index];
+        _button.LargeImage = _largeVariants[_variantIndex][index];
     }
 }

@@ -7,6 +7,7 @@ namespace FamilyMEP.DrainConnection.Entry;
 public sealed class Application : IExternalApplication
 {
     private DrainConnectionRibbonAnimator? _iconAnimator;
+    private static DrainConnectionRibbonAnimator? _activeIconAnimator;
 
     internal static FamilyMEP.Plugin.DrainConnectionPlugin Plugin { get; } = new();
 
@@ -38,12 +39,22 @@ public sealed class Application : IExternalApplication
         _iconAnimator = DrainConnectionRibbonAnimator.TryStart(
             button,
             Assembly.GetExecutingAssembly());
+        _activeIconAnimator = _iconAnimator;
         return Result.Succeeded;
+    }
+
+    internal static void ShuffleRibbonIcon()
+    {
+        _activeIconAnimator?.ShuffleVariant();
     }
 
     public Result OnShutdown(UIControlledApplication application)
     {
         _iconAnimator?.Dispose();
+        if (ReferenceEquals(_activeIconAnimator, _iconAnimator))
+        {
+            _activeIconAnimator = null;
+        }
         _iconAnimator = null;
         try
         {

@@ -63,6 +63,7 @@ public sealed class RunDrainConnectionCommand : IExternalCommand
     {
         try
         {
+            Application.ShuffleDrainConnectionIcon();
             return HotReloadManager.ReloadAndExecute(
                 commandData,
                 ref message,

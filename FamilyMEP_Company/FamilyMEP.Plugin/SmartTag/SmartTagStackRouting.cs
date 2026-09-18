@@ -82,7 +82,7 @@ internal static class SmartTagStackRouting
         double[] rows = rowsTopToBottom.OrderByDescending(value => value).ToArray();
         SmartTagStackRouteInput[] fixedItems = fixedRoutes?.ToArray() ?? [];
         SmartTagStackRouteInput[]? best = null;
-        (int Crossings, double Length, double Travel)? bestScore = null;
+        (int TextClashes, int Crossings, double Length, double Travel)? bestScore = null;
 
         if (movable.Count <= 8)
         {
@@ -175,10 +175,14 @@ internal static class SmartTagStackRouting
             bestScore = score;
         }
 
-        (int Crossings, double Length, double Travel) Score(
+        (int TextClashes, int Crossings, double Length, double Travel) Score(
             IReadOnlyList<SmartTagStackRouteInput> order)
         {
-            var routes = new List<(PredictedRoute Route, bool Movable)>(
+            var routes = new List<(
+                PredictedRoute Route,
+                bool Movable,
+                long Key,
+                LayoutRect Bounds)>(
                 order.Count + fixedItems.Length);
             double travel = 0.0;
             for (int index = 0; index < order.Count; index++)
@@ -187,9 +191,15 @@ internal static class SmartTagStackRouting
                 double row = rows[index];
                 var attachment = new LayoutPoint(item.Head.U, row);
                 var elbow = new LayoutPoint(item.End.U, row);
+                double shiftV = row - item.Head.V;
                 routes.Add((new PredictedRoute(
                     new LayoutSegment(attachment, elbow),
-                    new LayoutSegment(elbow, item.End)), true));
+                    new LayoutSegment(elbow, item.End)), true, item.Key,
+                    new LayoutRect(
+                        item.Bounds.MinU,
+                        item.Bounds.MinV + shiftV,
+                        item.Bounds.MaxU,
+                        item.Bounds.MaxV + shiftV)));
                 travel += Math.Abs(row - item.Head.V);
             }
             foreach (SmartTagStackRouteInput item in fixedItems)
@@ -197,11 +207,33 @@ internal static class SmartTagStackRouting
                 var elbow = new LayoutPoint(item.End.U, item.Head.V);
                 routes.Add((new PredictedRoute(
                     new LayoutSegment(item.Head, elbow),
-                    new LayoutSegment(elbow, item.End)), false));
+                    new LayoutSegment(elbow, item.End)), false, item.Key, item.Bounds));
             }
 
+            int textClashes = 0;
             int crossings = 0;
             double safeClearance = Math.Max(clearance, 1e-8);
+            for (int routeIndex = 0; routeIndex < routes.Count; routeIndex++)
+            {
+                var route = routes[routeIndex];
+                for (int bodyIndex = 0; bodyIndex < routes.Count; bodyIndex++)
+                {
+                    var body = routes[bodyIndex];
+                    if (body.Key == route.Key) continue;
+                    if (!route.Movable && !body.Movable) continue;
+                    if (SegmentIntersectsBody(
+                            route.Route.Horizontal,
+                            body.Bounds,
+                            safeClearance) ||
+                        SegmentIntersectsBody(
+                            route.Route.Vertical,
+                            body.Bounds,
+                            safeClearance))
+                    {
+                        textClashes++;
+                    }
+                }
+            }
             for (int first = 0; first < routes.Count; first++)
             for (int second = first + 1; second < routes.Count; second++)
             {
@@ -235,13 +267,15 @@ internal static class SmartTagStackRouting
                 .Where(item => item.Movable)
                 .Sum(item => SegmentLength(item.Route.Horizontal) +
                              SegmentLength(item.Route.Vertical));
-            return (crossings, length, travel);
+            return (textClashes, crossings, length, travel);
         }
 
         static bool Better(
-            (int Crossings, double Length, double Travel) candidate,
-            (int Crossings, double Length, double Travel) current)
+            (int TextClashes, int Crossings, double Length, double Travel) candidate,
+            (int TextClashes, int Crossings, double Length, double Travel) current)
         {
+            if (candidate.TextClashes != current.TextClashes)
+                return candidate.TextClashes < current.TextClashes;
             if (candidate.Crossings != current.Crossings)
                 return candidate.Crossings < current.Crossings;
             if (Math.Abs(candidate.Length - current.Length) > 1e-9)
@@ -329,15 +363,103 @@ internal static class SmartTagStackRouting
         !crossesOtherBody &&
         !crossesOtherLeader;
 
+    internal static bool ShouldUseStraightHorizontalLeaderAtHost(
+        LayoutPoint head,
+        LayoutPoint end,
+        LayoutRect? hostBounds,
+        double axisTolerance,
+        bool crossesOtherBody,
+        bool crossesOtherLeader)
+    {
+        double tolerance = Math.Max(axisTolerance, 0.0);
+        bool sameRow = Math.Abs(head.V - end.V) <= tolerance;
+        bool headRowInsideHost = hostBounds is LayoutRect host &&
+                                 head.V >= host.MinV + tolerance &&
+                                 head.V <= host.MaxV - tolerance;
+        return (sameRow || headRowInsideHost) &&
+               !crossesOtherBody &&
+               !crossesOtherLeader;
+    }
+
     internal static LayoutPoint GetVisibleLeaderAttachmentPoint(
         LayoutRect bodyBounds,
         LayoutPoint leaderEnd)
     {
-        double centerU = (bodyBounds.MinU + bodyBounds.MaxU) * 0.5;
         double centerV = (bodyBounds.MinV + bodyBounds.MaxV) * 0.5;
+        return GetVisibleLeaderAttachmentPoint(bodyBounds, leaderEnd, centerV);
+    }
+
+    internal static LayoutPoint GetVisibleLeaderAttachmentPoint(
+        LayoutRect bodyBounds,
+        LayoutPoint leaderEnd,
+        double attachmentV)
+    {
+        double centerU = (bodyBounds.MinU + bodyBounds.MaxU) * 0.5;
         return new LayoutPoint(
             leaderEnd.U <= centerU ? bodyBounds.MinU : bodyBounds.MaxU,
-            centerV);
+            attachmentV);
+    }
+
+    internal static LayoutPoint? FindRenderedLeaderAttachment(
+        IReadOnlyList<LayoutSegment> renderedSegments,
+        LayoutPoint elbow,
+        LayoutRect bodyBounds,
+        double endpointTolerance,
+        double bodyTolerance)
+    {
+        double endpointToleranceSquared =
+            Math.Max(endpointTolerance, 0.0) * Math.Max(endpointTolerance, 0.0);
+        double safeBodyTolerance = Math.Max(bodyTolerance, 0.0);
+        LayoutRect expandedBody = bodyBounds.Expand(safeBodyTolerance);
+        LayoutPoint? best = null;
+        double bestScore = double.PositiveInfinity;
+        foreach (LayoutSegment segment in renderedSegments)
+        {
+            Consider(segment.Start, segment.End);
+            Consider(segment.End, segment.Start);
+        }
+        return best;
+
+        void Consider(LayoutPoint possibleElbow, LayoutPoint possibleAttachment)
+        {
+            double elbowDistance = SquaredDistance(possibleElbow, elbow);
+            if (elbowDistance > endpointToleranceSquared) return;
+            if (!Contains(expandedBody, possibleAttachment)) return;
+            double lengthSquared = SquaredDistance(possibleElbow, possibleAttachment);
+            if (lengthSquared <= endpointToleranceSquared) return;
+
+            // Prefer the curve endpoint closest to the visible body edge. The
+            // geometry can also contain text strokes; those rarely share the
+            // API elbow, but this score makes the selection deterministic if
+            // a family contributes coincident annotation graphics.
+            double bodyDistance = SquaredDistanceToRect(possibleAttachment, bodyBounds);
+            double score = elbowDistance * 1000.0 + bodyDistance - lengthSquared * 1e-9;
+            if (score >= bestScore) return;
+            bestScore = score;
+            best = possibleAttachment;
+        }
+
+        static bool Contains(LayoutRect rect, LayoutPoint point) =>
+            point.U >= rect.MinU && point.U <= rect.MaxU &&
+            point.V >= rect.MinV && point.V <= rect.MaxV;
+
+        static double SquaredDistance(LayoutPoint first, LayoutPoint second)
+        {
+            double du = first.U - second.U;
+            double dv = first.V - second.V;
+            return du * du + dv * dv;
+        }
+
+        static double SquaredDistanceToRect(LayoutPoint point, LayoutRect rect)
+        {
+            double du = point.U < rect.MinU
+                ? rect.MinU - point.U
+                : point.U > rect.MaxU ? point.U - rect.MaxU : 0.0;
+            double dv = point.V < rect.MinV
+                ? rect.MinV - point.V
+                : point.V > rect.MaxV ? point.V - rect.MaxV : 0.0;
+            return du * du + dv * dv;
+        }
     }
 
     internal static LayoutRect AnchorLeaderlessBodyToLiveBounds(
